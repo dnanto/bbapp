@@ -1,24 +1,31 @@
-section	field	type	width
-match	home	team	2
-match	away	team	2
-match	date	date	2
-match	location	text	2
-shot	color	color	2
-shot	period	period	2
-shot	goalie	player	2
-point	color	color	2
-point	shooter	player	2
-point	assist1	player	2
-point	assist2	player	2
-point	goalie	player	2
-point	period	period	2
-point	time	time	2
-point	types	types	2
-penalty	color	color	2
-penalty	player	player	2
-penalty	call	call	2
-penalty	duration	duration	2
-penalty	goalie	player	2
-penalty	period	period	2
-penalty	time	time	2
-penalty	scored	boolean	2
+section	field
+match	date
+match	location
+match	home
+match	away
+shot	color
+shot	shot
+shot	goalie
+shot	period
+point	color
+point	shooter
+point	assist1
+point	assist2
+point	goalie
+point	period
+point	min
+point	sec
+point	EV
+point	PP
+point	SH
+point	EN
+penalty	color
+penalty	player
+penalty	server
+penalty	call
+penalty	duration
+penalty	goalie
+penalty	period
+penalty	min
+penalty	sec
+penalty	scored
