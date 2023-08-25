@@ -4,7 +4,7 @@ match	location
 match	home
 match	away
 shot	color
-shot	shot
+shot	SH
 shot	goalie
 shot	period
 point	color
