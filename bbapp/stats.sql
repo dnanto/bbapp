@@ -164,12 +164,12 @@ SELECT
   player1.name AS shooter, player2.name AS assist1, player3.name AS assist2, player4.name AS goalie,
   period, time, EV, PP, SH, EN
 FROM point
-LEFT JOIN match ON match = match.id
-LEFT JOIN team ON iif(team == 1, team1, team2) = team.id
-LEFT JOIN player AS player1 ON shooter = player1.id
-LEFT JOIN player AS player2 ON assist1 = player2.id
-LEFT JOIN player AS player3 ON assist2 = player3.id
-LEFT JOIN player AS player4 ON goalie = player4.id
+LEFT JOIN match ON match == match.id
+LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+LEFT JOIN player AS player1 ON shooter == player1.id
+LEFT JOIN player AS player2 ON assist1 == player2.id
+LEFT JOIN player AS player3 ON assist2 == player3.id
+LEFT JOIN player AS player4 ON goalie == player4.id
 ;
 
 CREATE VIEW "stats"."v_penalty" AS
@@ -181,12 +181,12 @@ SELECT
   foul.call,
   duration, period, time, scored
 FROM penalty
-LEFT JOIN match ON match = match.id
-LEFT JOIN team ON iif(team == 1, team1, team2) = team.id
-LEFT JOIN player AS player1 ON player = player1.id
-LEFT JOIN player AS player2 ON server = player2.id
-LEFT JOIN player AS player3 ON goalie = player3.id
-LEFT JOIN foul ON foul = foul.id
+LEFT JOIN match ON match == match.id
+LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+LEFT JOIN player AS player1 ON player == player1.id
+LEFT JOIN player AS player2 ON server == player2.id
+LEFT JOIN player AS player3 ON goalie == player3.id
+LEFT JOIN foul ON foul == foul.id
 ;
 
 CREATE VIEW "stats"."v_shot" AS
@@ -197,9 +197,9 @@ SELECT
   player.name AS goalie,
   SH, period
 FROM shot
-LEFT JOIN match ON match = match.id
-LEFT JOIN team ON iif(team == 1, team1, team2) = team.id
-LEFT JOIN player ON goalie = player.id
+LEFT JOIN match ON match == match.id
+LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+LEFT JOIN player ON goalie == player.id
 ;
 
 CREATE VIEW "stats"."v_roster" AS
@@ -207,8 +207,8 @@ SELECT
   roster.id, roster.team AS team_id, roster.player AS player_id,
   team.year, team.season, team.name AS team, team.color, 
   player.name AS player FROM roster
-LEFT JOIN team ON team = team.id
-LEFT JOIN player ON player = player.id
+LEFT JOIN team ON team == team.id
+LEFT JOIN player ON player == player.id
 ;
 
 CREATE VIEW "stats"."v_assist" AS
@@ -228,14 +228,31 @@ FROM (
 ) AS point
 LEFT JOIN player AS player_1 ON player_1_id == player_1.id
 LEFT JOIN player AS player_2 ON player_2_id == player_2.id
-LEFT JOIN match ON match = match.id
-LEFT JOIN team ON iif(team_id == 1, team1, team2) = team.id
+LEFT JOIN match ON match == match.id
+LEFT JOIN team ON iif(team_id == 1, team1, team2) == team.id
 ;
 
 CREATE VIEW "stats"."v_matchup" AS
-SELECT team.year, team.season, match.week, match.game, team.color, team.name AS team, rink.name AS rink FROM match
-LEFT JOIN team ON team1 == team.id OR team2 == team.id
-LEFT JOIN rink ON rink = rink.id
+SELECT 
+  team.year, team.season, x.week, x.game, 
+  x.match_id, x.team_id, team.name AS team, team.color, rink.name AS rink, 
+  IFNULL(score, 0) AS score
+FROM
+(
+  SELECT id AS match_id, week, game, team1 AS team_id, rink AS rink_id FROM match 
+  UNION
+  SELECT id, week, game, team2, rink FROM match
+) AS x
+LEFT JOIN
+(
+  SELECT match.id AS match_id, team.id AS team_id, COUNT(*) AS score FROM point
+  LEFT JOIN match ON match = match.id
+  LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+  GROUP BY match_id, team_id
+) AS y
+ON x.match_id == y.match_id AND x.team_id == y.team_id
+LEFT JOIN team ON x.team_id = team.id
+LEFT JOIN rink ON x.rink_id = rink.id
 ;
 
 COMMIT;

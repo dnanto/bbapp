@@ -72,7 +72,8 @@ server <- shinyServer(function(input, output) {
   output$matchup <- renderText({
     with(
       match()$v_matchup,
-      str_c(str_glue("{team[1]} vs. {team[2]}"), if (is.na(rink[1])) c() else rink[1], sep = " @ ")
+      str_c(str_glue("{team[1]} vs. {team[2]}"), if (is.na(rink[1])) c() else rink[1], sep = " @ ") %>%
+        str_c(str_glue("{score[1]} - {score[2]}"), sep = ": ")
     )
   })
 
