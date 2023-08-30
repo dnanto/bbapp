@@ -13,16 +13,20 @@ ui <- shinyUI(
       ),
       mainPanel(
         tabsetPanel(
-          tabPanel("point", 
-            visNetworkOutput("assist", width = "100%"),
-            rHandsontableOutput("point")
+          tabPanel("match", 
+            textOutput("matchup"),
+            visNetworkOutput("assist"),
+            tabsetPanel(
+              tabPanel("point", rHandsontableOutput("point", height = 750)),
+              tabPanel("penalty", rHandsontableOutput("penalty", height = 750)),
+              tabPanel("shot", rHandsontableOutput("shot", height = 750)),
+              tabPanel("note")
+            )
           ),
-          tabPanel("penalty", rHandsontableOutput("penalty")),
-          tabPanel("shot", rHandsontableOutput("shot")),
-          tabPanel("note"),
-          tabPanel("roster", rHandsontableOutput("roster")),
-          tabPanel("player", rHandsontableOutput("player"))
-        )
+          tabPanel("roster", rHandsontableOutput("roster", height = 750)),
+          tabPanel("player", rHandsontableOutput("player", height = 750))
+        ),
+        width = 10
       )
     )
   )

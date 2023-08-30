@@ -232,4 +232,10 @@ LEFT JOIN match ON match = match.id
 LEFT JOIN team ON iif(team_id == 1, team1, team2) = team.id
 ;
 
+CREATE VIEW "stats"."v_matchup" AS
+SELECT team.year, team.season, match.week, match.game, team.color, team.name AS team, rink.name AS rink FROM match
+LEFT JOIN team ON team1 == team.id OR team2 == team.id
+LEFT JOIN rink ON rink = rink.id
+;
+
 COMMIT;
