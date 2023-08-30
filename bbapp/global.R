@@ -29,3 +29,25 @@ hex_to_color <- Vectorize(
   },
   USE.NAMES = F
 )
+
+renderer.team <- (
+  "
+    function(instance, td, row, col, prop, value, cellProperties) {
+      Handsontable.renderers.TextRenderer.apply(this, arguments);
+      td.style.borderStyle = 'dashed';
+      td.style.borderWidth = '2px';
+      if (instance.params) td.style.borderColor = instance.params.colors[row];
+      return td;
+    }
+  "
+)
+
+validator.time <- (
+  "
+    function (value, callback) {
+      setTimeout(function() {
+        callback(/^[0-9]{2}:[0-9]{2}\\.[0-9]{3}$/.test(value));
+      }, 1000);
+    }
+  "
+)

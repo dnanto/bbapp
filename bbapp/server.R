@@ -106,34 +106,27 @@ server <- shinyServer(function(input, output) {
       select(team, shooter, assist1, assist2, goalie, period, time, EV, PP, SH, EN) %>%
       rhandsontable(colors = data$v_point$color) %>%
       hot_validate_numeric("period", min = 1) %>%
-      hot_col(
-        "team",
-        renderer = "
-          function(instance, td, row, col, prop, value, cellProperties) {
-            Handsontable.renderers.TextRenderer.apply(this, arguments);
-            td.style.borderStyle = 'dashed';
-            td.style.borderWidth = '2px';
-            if (instance.params) td.style.borderColor = instance.params.colors[row];
-            return td;
-          }
-        "
-      )
+      hot_col("team", renderer = renderer.team) %>%
+      hot_col("time", validator = validator.time)
   })
 
   output$penalty <- renderRHandsontable({
     data <- match()
     data$v_penalty %>%
       select(team, player, server, goalie, call, duration, period, time, scored) %>%
-      rhandsontable() %>%
+      rhandsontable(colors = data$v_penalty$color) %>%
+      hot_col("team", renderer = renderer.team) %>%
       hot_validate_numeric("duration", min = 0) %>%
-      hot_validate_numeric("period", min = 1)
+      hot_validate_numeric("period", min = 1) %>%
+      hot_col("time", validator = validator.time)
   })
 
   output$shot <- renderRHandsontable({
     data <- match()
     data$v_shot %>%
       select(team, goalie, SH, period) %>%
-      rhandsontable() %>%
+      rhandsontable(colors = data$v_shot$color) %>%
+      hot_col("team", renderer = renderer.team) %>%
       hot_validate_numeric("SH", min = 0) %>%
       hot_validate_numeric("period", min = 1)
   })
