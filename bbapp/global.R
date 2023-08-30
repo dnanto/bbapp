@@ -36,7 +36,11 @@ renderer.team <- (
       Handsontable.renderers.TextRenderer.apply(this, arguments);
       td.style.borderStyle = 'dashed';
       td.style.borderWidth = '2px';
-      if (instance.params) td.style.borderColor = instance.params.colors[row];
+      if (instance.params) {
+        colors = instance.params.colors;
+        colors = colors instanceof Array ? colors : [colors];
+        td.style.borderColor = colors[row];
+      }
       return td;
     }
   "
