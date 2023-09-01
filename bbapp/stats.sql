@@ -1,143 +1,67 @@
--- Schema: stats
---   stats
+-- Creator:       MySQL Workbench 8.0.34/ExportSQLite Plugin 0.1.0
+-- Author:        Daniel Antonio Negrón (@dnanto)
+-- Caption:       This is a model for broomball league statistics.
+-- Project:       bbapp
 
+-- Schema: stats
 ATTACH "stats.sdb" AS "stats";
 BEGIN;
-
-CREATE TABLE "stats"."player" (
+CREATE TABLE "stats"."player"(
   "id" INTEGER PRIMARY KEY NOT NULL,
   "name" TEXT NOT NULL,
-  "alias" TEXT NULL
+  "alias" TEXT,
+  CONSTRAINT "uq_player_idx"
+    UNIQUE("name","alias")
 );
-CREATE UNIQUE INDEX "stats"."uq_player_name" ON "player" ("name" ASC);
-
-CREATE TABLE "stats"."team" (
+CREATE TABLE "stats"."team"(
   "id" INTEGER PRIMARY KEY NOT NULL,
   "name" TEXT NOT NULL,
   "color" TEXT NOT NULL,
-  "captain1" INTEGER NULL,
-  "captain2" INTEGER NULL,
+  "captain" INTEGER,
+  "co-captain" INTEGER,
   "year" INTEGER NOT NULL,
-  "season" NUMERIC NOT NULL,
-  CONSTRAINT "fk_team_player1" FOREIGN KEY ("captain1") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_team_player2" FOREIGN KEY ("captain2") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  "season" DECIMAL NOT NULL,
+  CONSTRAINT "uq_team_idx"
+    UNIQUE("name","year","season"),
+  CONSTRAINT "fk_team_captain"
+    FOREIGN KEY("captain")
+    REFERENCES "player"("id"),
+  CONSTRAINT "fk_team_co-captain"
+    FOREIGN KEY("co-captain")
+    REFERENCES "player"("id")
 );
-CREATE INDEX "stats"."fk_team_player1_idx" ON "team" ("captain1" ASC);
-CREATE INDEX "stats"."fk_team_player2_idx" ON "team" ("captain2" ASC);
-CREATE UNIQUE INDEX "stats"."uq_team" ON "team" ("name" ASC, "year" ASC, "season" ASC);
-
-CREATE TABLE "stats"."roster" (
+CREATE INDEX "stats"."team.fk_team_player1_idx" ON "team" ("captain");
+CREATE INDEX "stats"."team.fk_team_player2_idx" ON "team" ("co-captain");
+CREATE TABLE "stats"."roster"(
   "id" INTEGER PRIMARY KEY NOT NULL,
-  "team" INTEGER NULL,
+  "team" INTEGER NOT NULL,
   "player" INTEGER NOT NULL,
-  CONSTRAINT "fk_roster_team1" FOREIGN KEY ("team") REFERENCES "team" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_roster_player1" FOREIGN KEY ("player") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT "uq_team_idx"
+    UNIQUE("team","player"),
+  CONSTRAINT "fk_roster_team"
+    FOREIGN KEY("team")
+    REFERENCES "team"("id"),
+  CONSTRAINT "fk_roster_player"
+    FOREIGN KEY("player")
+    REFERENCES "player"("id")
 );
-CREATE INDEX "stats"."fk_roster_team1_idx" ON "roster" ("team" ASC);
-CREATE INDEX "stats"."fk_roster_player1_idx" ON "player" ("player" ASC);
-
-CREATE TABLE "stats"."rink" (
+CREATE INDEX "stats"."roster.fk_roster_team_idx" ON "roster" ("team");
+CREATE INDEX "stats"."roster.fk_roster_player_idx" ON "roster" ("player");
+CREATE TABLE "stats"."foul"(
+  "id" INTEGER PRIMARY KEY NOT NULL,
+  "call" TEXT NOT NULL,
+  CONSTRAINT "uq_foul_idx"
+    UNIQUE("call")
+);
+CREATE TABLE "stats"."rink"(
   "id" INTEGER PRIMARY KEY NOT NULL,
   "name" TEXT NOT NULL,
-  "address" TEXT NOT NULL
+  "address" TEXT NOT NULL,
+  CONSTRAINT "uq_rink_idx"
+    UNIQUE("name")
 );
-CREATE UNIQUE INDEX "stats"."uq_rink" ON "rink" ("name" ASC);
-
-CREATE TABLE "stats"."match" (
-  "id" INTEGER PRIMARY KEY NOT NULL,
-  "team1" INTEGER NOT NULL,
-  "team2" INTEGER NOT NULL,
-  "week" INTEGER NOT NULL,
-  "game" INTEGER NOT NULL,
-  "rink" INTEGER,
-  "meta" TEXT,
-  CONSTRAINT "fk_match_team1" FOREIGN KEY ("team1") REFERENCES "team" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_match_team2" FOREIGN KEY ("team2") REFERENCES "team" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_match_rink1" FOREIGN KEY ("rink") REFERENCES "rink" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-CREATE INDEX "stats"."fk_match_team1_idx" ON "match" ("team1" ASC);
-CREATE INDEX "stats"."fk_match_team2_idx" ON "match" ("team2" ASC);
-CREATE INDEX "stats"."fk_match_rink1_idx" ON "match" ("rink" ASC);
-CREATE UNIQUE INDEX "stats"."uq_match" ON "match" ("team1" ASC, "team2" ASC, "week" ASC, "game" ASC);
-CREATE TRIGGER "stats"."tr_match_team"
-BEFORE INSERT ON "stats"."match"
-WHEN (SELECT year, season FROM team WHERE name == NEW.team1) != (SELECT year, season FROM team WHERE name == NEW.team2)
-BEGIN
-    SELECT RAISE(FAIL, "the teams for this match are not of the same year/season");
-END;
-
-CREATE TABLE "stats"."point" (
-  "id" INTEGER PRIMARY KEY NOT NULL,
-  "match" INTEGER NOT NULL,
-  "team" INTEGER NOT NULL CHECK (team == 1 OR team == 2),
-  "shooter" INTEGER NOT NULL,
-  "assist1" INTEGER NULL,
-  "assist2" INTEGER NULL,
-  "goalie" INTEGER NULL,
-  "period" INTEGER NULL,
-  "time" TEXT NULL,
-  "EV" INTEGER NOT NULL,
-  "PP" INTEGER NOT NULL,
-  "SH" INTEGER NOT NULL,
-  "EN" INTEGER NOT NULL,
-  CONSTRAINT "fk_point_match1" FOREIGN KEY ("match") REFERENCES "match" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_point_player1" FOREIGN KEY ("shooter") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_point_player2" FOREIGN KEY ("assist1") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_point_player3" FOREIGN KEY ("assist2") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_point_player4" FOREIGN KEY ("goalie") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-CREATE INDEX "stats"."fk_point_match1_idx" ON "point" ("match" ASC);
-CREATE INDEX "stats"."fk_point_player1_idx" ON "point" ("shooter" ASC);
-CREATE INDEX "stats"."fk_point_player2_idx" ON "point"("assist1" ASC);
-CREATE INDEX "stats"."fk_point_player3_idx" ON "point" ("assist2" ASC);
-CREATE INDEX "stats"."fk_point_player4_idx" ON "point" ("goalie" ASC);
-
-CREATE TABLE "stats"."foul" (
-    "id" INTEGER PRIMARY KEY NOT NULL,
-    "call" TEXT NOT NULL
-);
-CREATE UNIQUE INDEX "stats"."uq_foul" ON "foul" ("call" ASC);
-
-CREATE TABLE "stats"."penalty" (
-  "id" INTEGER PRIMARY KEY NOT NULL,
-  "match" INTEGER NOT NULL,
-  "team" INTEGER NOT NULL CHECK (team == 1 OR team == 2),
-  "player" INTEGER NULL,
-  "server" INTEGER NULL,
-  "goalie" INTEGER NULL,
-  "foul" INTEGER NULL,
-  "duration" INTEGER NOT NULL,
-  "period" INTEGER NULL,
-  "time" TEXT NULL,
-  "scored" INTEGER NULL,
-  CONSTRAINT "fk_penalty_match1" FOREIGN KEY ("match") REFERENCES "match" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_penalty_player1" FOREIGN KEY ("player") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_penalty_player2" FOREIGN KEY ("server") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_penalty_player3" FOREIGN KEY ("goalie") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_penalty_foul1" FOREIGN KEY ("foul") REFERENCES "foul" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-CREATE INDEX "stats"."fk_penalty_match1_idx" ON "penalty" ("match" ASC);
-CREATE INDEX "stats"."fk_penalty_player1_idx" ON "penalty" ("player" ASC);
-CREATE INDEX "stats"."fk_penalty_player2_idx" ON "penalty" ("server" ASC);
-CREATE INDEX "stats"."fk_penalty_player3_idx" ON "penalty" ("goalie" ASC);
-CREATE INDEX "stats"."fk_penalty_foul1_idx" ON "penalty" ("foul" ASC);
-
-CREATE TABLE "stats"."shot" (
-  "id" INTEGER PRIMARY KEY NOT NULL,
-  "match" INTEGER NOT NULL,
-  "team" INTEGER NOT NULL CHECK (team == 1 OR team == 2),
-  "goalie" INTEGER NULL,
-  "period" INTEGER NULL,
-  "SH" INTEGER NOT NULL,
-  CONSTRAINT "fk_shot_match1" FOREIGN KEY ("match") REFERENCES "match" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "fk_shot_player1" FOREIGN KEY ("goalie") REFERENCES "player" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-CREATE INDEX "stats"."fk_shot_match1_idx" ON "shot" ("match" ASC);
-CREATE INDEX "stats"."fk_shot_player1_idx" ON "shot" ("goalie" ASC);
-
-CREATE TABLE "stats"."legacy" (
-  "id" INTEGER PRIMARY KEY NOT NULL,
-  "roster" INTEGER NOT NULL,
+CREATE TABLE "stats"."legacy"(
+  "roster" INTEGER PRIMARY KEY NOT NULL,
   "G" INTEGER NOT NULL DEFAULT 0,
   "A" INTEGER NOT NULL DEFAULT 0,
   "PIM" INTEGER NOT NULL DEFAULT 0,
@@ -152,9 +76,119 @@ CREATE TABLE "stats"."legacy" (
   "SH" INTEGER NOT NULL DEFAULT 0,
   "GA" INTEGER NOT NULL DEFAULT 0,
   "SHO" INTEGER NOT NULL DEFAULT 0,
-  CONSTRAINT "fk_legacy_roster1" FOREIGN KEY ("roster") REFERENCES "roster" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT "fk_legacy_roster"
+    FOREIGN KEY("roster")
+    REFERENCES "roster"("id")
 );
-CREATE INDEX "stats"."fk_legacy_roster1_idx" ON "legacy" ("roster" ASC);
+CREATE TABLE "stats"."match"(
+  "id" INTEGER PRIMARY KEY NOT NULL,
+  "team1" INTEGER NOT NULL,
+  "team2" INTEGER NOT NULL,
+  "week" INTEGER NOT NULL,
+  "game" INTEGER NOT NULL,
+  "rink" INTEGER,
+  "meta" TEXT,
+  CONSTRAINT "uq_match_idx"
+    UNIQUE("team1","team2","week","game"),
+  CONSTRAINT "fk_match_team1"
+    FOREIGN KEY("team1")
+    REFERENCES "team"("id"),
+  CONSTRAINT "fk_match_team2"
+    FOREIGN KEY("team2")
+    REFERENCES "team"("id"),
+  CONSTRAINT "fk_match_rink"
+    FOREIGN KEY("rink")
+    REFERENCES "rink"("id")
+);
+CREATE INDEX "stats"."match.fk_match_team1_idx" ON "match" ("team1");
+CREATE INDEX "stats"."match.fk_match_team2_idx" ON "match" ("team2");
+CREATE INDEX "stats"."match.fk_match_rink_idx" ON "match" ("rink");
+CREATE TABLE "stats"."point"(
+  "id" INTEGER PRIMARY KEY NOT NULL,
+  "match" INTEGER NOT NULL,
+  "team" INTEGER NOT NULL,
+  "shooter" INTEGER NOT NULL,
+  "assist1" INTEGER,
+  "assist2" INTEGER,
+  "goalie" INTEGER,
+  "period" INTEGER,
+  "time" TEXT,
+  "EV" INTEGER NOT NULL,
+  "PP" INTEGER NOT NULL,
+  "SH" INTEGER NOT NULL,
+  "EN" INTEGER NOT NULL,
+  CONSTRAINT "fk_point_match"
+    FOREIGN KEY("match")
+    REFERENCES "match"("id"),
+  CONSTRAINT "fk_point_shooter"
+    FOREIGN KEY("shooter")
+    REFERENCES "player"("id"),
+  CONSTRAINT "fk_point_assist1"
+    FOREIGN KEY("assist1")
+    REFERENCES "player"("id"),
+  CONSTRAINT "fk_point_assist2"
+    FOREIGN KEY("assist2")
+    REFERENCES "player"("id"),
+  CONSTRAINT "fk_point_goalie"
+    FOREIGN KEY("goalie")
+    REFERENCES "player"("id")
+);
+CREATE INDEX "stats"."point.fk_point_match_idx" ON "point" ("match");
+CREATE INDEX "stats"."point.fk_point_shooter_idx" ON "point" ("shooter");
+CREATE INDEX "stats"."point.fk_point_assist1_idx" ON "point" ("assist1");
+CREATE INDEX "stats"."point.fk_point_assist2_idx" ON "point" ("assist2");
+CREATE INDEX "stats"."point.fk_point_goalie_idx" ON "point" ("goalie");
+CREATE TABLE "stats"."penalty"(
+  "id" INTEGER PRIMARY KEY NOT NULL,
+  "match" INTEGER NOT NULL,
+  "team" INTEGER NOT NULL,
+  "player" INTEGER,
+  "server" INTEGER,
+  "goalie" INTEGER,
+  "foul" INTEGER,
+  "duration" INTEGER NOT NULL,
+  "period" INTEGER,
+  "time" TEXT,
+  "scored" INTEGER,
+  CONSTRAINT "fk_penalty_match"
+    FOREIGN KEY("match")
+    REFERENCES "match"("id"),
+  CONSTRAINT "fk_penalty_player"
+    FOREIGN KEY("player")
+    REFERENCES "player"("id"),
+  CONSTRAINT "fk_penalty_server"
+    FOREIGN KEY("server")
+    REFERENCES "player"("id"),
+  CONSTRAINT "fk_penalty_goalie"
+    FOREIGN KEY("goalie")
+    REFERENCES "player"("id"),
+  CONSTRAINT "fk_penalty_foul1"
+    FOREIGN KEY("foul")
+    REFERENCES "foul"("id")
+);
+CREATE INDEX "stats"."penalty.fk_penalty_match_idx" ON "penalty" ("match");
+CREATE INDEX "stats"."penalty.fk_penalty_player_idx" ON "penalty" ("player");
+CREATE INDEX "stats"."penalty.fk_penalty_server_idx" ON "penalty" ("server");
+CREATE INDEX "stats"."penalty.fk_penalty_goalie_idx" ON "penalty" ("goalie");
+CREATE INDEX "stats"."penalty.fk_penalty_foul_idx" ON "penalty" ("foul");
+CREATE TABLE "stats"."shot"(
+  "id" INTEGER PRIMARY KEY NOT NULL,
+  "match" INTEGER NOT NULL,
+  "team" INTEGER NOT NULL,
+  "goalie" INTEGER NULL,
+  "SH" INTEGER NOT NULL,
+  "period" INTEGER,
+  CONSTRAINT "fk_shot_match"
+    FOREIGN KEY("match")
+    REFERENCES "match"("id"),
+  CONSTRAINT "fk_shot_goalie"
+    FOREIGN KEY("goalie")
+    REFERENCES "player"("id")
+);
+CREATE INDEX "stats"."shot.fk_shot_match_idx" ON "shot" ("match");
+CREATE INDEX "stats"."shot.fk_shot_player_idx" ON "shot" ("goalie");
+
+-- views
 
 CREATE VIEW "stats"."v_point" AS
 SELECT

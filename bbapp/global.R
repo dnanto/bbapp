@@ -30,16 +30,25 @@ hex_to_color <- Vectorize(
   USE.NAMES = F
 )
 
-renderer.team <- (
+renderer.color <- (
   "
     function(instance, td, row, col, prop, value, cellProperties) {
       Handsontable.renderers.TextRenderer.apply(this, arguments);
-      td.style.borderStyle = 'dashed';
-      td.style.borderWidth = '2px';
       if (instance.params) {
-        colors = instance.params.colors;
-        colors = colors instanceof Array ? colors : [colors];
-        td.style.borderColor = colors[row];
+        if (instance.getColHeader()[col] === 'team') {
+          color = instance.params.team_color;
+          color = color instanceof Array ? color : [color];
+          td.style.borderColor = color[row];
+          td.style.borderStyle = 'dotted';
+          td.style.borderWidth = '2px';
+        } else {
+          if (value !== null) {
+            color = instance.params.player_color;
+            td.style.borderColor = color[value];
+            td.style.borderStyle = 'dotted';
+            td.style.borderWidth = '2px';
+          }
+        }
       }
       return td;
     }
