@@ -7,14 +7,14 @@
 ATTACH "stats.sdb" AS "stats";
 BEGIN;
 CREATE TABLE "stats"."player"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "name" TEXT NOT NULL,
   "alias" TEXT,
   CONSTRAINT "uq_player_idx"
     UNIQUE("name","alias")
 );
 CREATE TABLE "stats"."team"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "name" TEXT NOT NULL,
   "color" TEXT NOT NULL,
   "captain" INTEGER,
@@ -33,7 +33,7 @@ CREATE TABLE "stats"."team"(
 CREATE INDEX "stats"."team.fk_team_player1_idx" ON "team" ("captain");
 CREATE INDEX "stats"."team.fk_team_player2_idx" ON "team" ("co-captain");
 CREATE TABLE "stats"."roster"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "team" INTEGER NOT NULL,
   "player" INTEGER NOT NULL,
   CONSTRAINT "uq_team_idx"
@@ -48,13 +48,13 @@ CREATE TABLE "stats"."roster"(
 CREATE INDEX "stats"."roster.fk_roster_team_idx" ON "roster" ("team");
 CREATE INDEX "stats"."roster.fk_roster_player_idx" ON "roster" ("player");
 CREATE TABLE "stats"."foul"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "call" TEXT NOT NULL,
   CONSTRAINT "uq_foul_idx"
     UNIQUE("call")
 );
 CREATE TABLE "stats"."rink"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "name" TEXT NOT NULL,
   "address" TEXT NOT NULL,
   CONSTRAINT "uq_rink_idx"
@@ -81,7 +81,7 @@ CREATE TABLE "stats"."legacy"(
     REFERENCES "roster"("id")
 );
 CREATE TABLE "stats"."match"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "team1" INTEGER NOT NULL,
   "team2" INTEGER NOT NULL,
   "week" INTEGER NOT NULL,
@@ -104,7 +104,7 @@ CREATE INDEX "stats"."match.fk_match_team1_idx" ON "match" ("team1");
 CREATE INDEX "stats"."match.fk_match_team2_idx" ON "match" ("team2");
 CREATE INDEX "stats"."match.fk_match_rink_idx" ON "match" ("rink");
 CREATE TABLE "stats"."point"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "match" INTEGER NOT NULL,
   "team" INTEGER NOT NULL,
   "shooter" INTEGER NOT NULL,
@@ -139,7 +139,7 @@ CREATE INDEX "stats"."point.fk_point_assist1_idx" ON "point" ("assist1");
 CREATE INDEX "stats"."point.fk_point_assist2_idx" ON "point" ("assist2");
 CREATE INDEX "stats"."point.fk_point_goalie_idx" ON "point" ("goalie");
 CREATE TABLE "stats"."penalty"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "match" INTEGER NOT NULL,
   "team" INTEGER NOT NULL,
   "player" INTEGER,
@@ -172,7 +172,7 @@ CREATE INDEX "stats"."penalty.fk_penalty_server_idx" ON "penalty" ("server");
 CREATE INDEX "stats"."penalty.fk_penalty_goalie_idx" ON "penalty" ("goalie");
 CREATE INDEX "stats"."penalty.fk_penalty_foul_idx" ON "penalty" ("foul");
 CREATE TABLE "stats"."shot"(
-  "id" INTEGER PRIMARY KEY NOT NULL,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "match" INTEGER NOT NULL,
   "team" INTEGER NOT NULL,
   "goalie" INTEGER NULL,

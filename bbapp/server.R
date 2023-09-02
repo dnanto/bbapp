@@ -1,20 +1,20 @@
 server <- shinyServer(function(input, output) {
   match <- eventReactive(input$load, {
-    conn <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
     params <- lapply(c("year", "season", "week", "game"), \(ele) input[[ele]])
 
     match <- list()
     match$team <- (
-      DBI::dbReadTable(conn, "team") %>%
+      DBI::dbReadTable(con, "team") %>%
         mutate(name = as.factor(name))
     )
     match$player <- (
-      DBI::dbReadTable(conn, "player") %>%
+      DBI::dbReadTable(con, "player") %>%
         mutate(name = as.factor(name))
     )
     match$v_roster <- (
       DBI::dbGetQuery(
-        conn,
+        con,
         "SELECT * FROM v_roster WHERE year == ? AND season == ?;",
         params = params[1:2]
       ) %>%
@@ -26,7 +26,7 @@ server <- shinyServer(function(input, output) {
     )
     match$v_matchup <- (
       DBI::dbGetQuery(
-        conn,
+        con,
         "SELECT * FROM v_matchup WHERE year == ? AND season == ? AND week == ? AND game == ?;",
         params = params
       ) %>%
@@ -35,7 +35,7 @@ server <- shinyServer(function(input, output) {
         )
     )
     match$foul <- (
-      DBI::dbReadTable(conn, "foul") %>%
+      DBI::dbReadTable(con, "foul") %>%
         mutate(call = as.factor(call))
     )
     match <- c(
@@ -44,10 +44,10 @@ server <- shinyServer(function(input, output) {
         c("v_point", "v_penalty", "v_shot", "v_assist"),
         \(ele)
         DBI::dbGetQuery(
-          conn,
+          con,
           glue::glue_sql(
             "SELECT * FROM {`ele`} WHERE year == ? AND season == ? AND week == ? AND game == ?;",
-            .con = conn
+            .con = con
           ),
           params = params
         ) %>%
@@ -64,7 +64,7 @@ server <- shinyServer(function(input, output) {
       )
     )
     match$v_point <- mutate(match$v_point, across(types, as.logical))
-    DBI::dbDisconnect(conn)
+    DBI::dbDisconnect(con)
 
     match
   })
@@ -141,7 +141,61 @@ server <- shinyServer(function(input, output) {
   })
 
   output$player <- renderRHandsontable({
-    data <- match()
-    rhandsontable(data$player)
+    mutate(match()$player, name = as.character(name)) %>%
+      rhandsontable(rowHeaders = NULL)
+  })
+
+  values <- reactiveValues(
+    changes = data.frame(id=integer(0), key=character(0), prv=character(0), val=character(0))
+  )
+  
+  observeEvent(input$player$changes$changes,{
+    changes <- input$player$changes$changes[[1]]
+    coor <- 1 + as.integer(lapply(1:2, \(idx) changes[[idx]]))
+    values$changes <- with(
+      input$player$params,
+      bind_rows(
+        values$changes,
+        setNames(
+          c(data[[coor[1]]][1], colHeaders[[coor[2]]][1], lapply(3:4, \(idx) changes[[idx]])),
+          names(values$changes)
+        )
+      )
+    )
+  })
+  
+  observeEvent(input$save, {
+    df.changes <- values$changes
+    
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    
+    idx <- with(df.changes, which(is.na(id) & key == "name"))
+    if (length(idx) > 0) {
+      df.changes[idx, ]$id <- lapply(df.changes[idx, ]$val, \(ele) 
+        DBI::dbGetQuery(
+          con,
+          "INSERT INTO player VALUES (NULL, ?, NULL) RETURNING id;",
+          params = ele
+        )
+      )
+    }
+    print(df.changes)
+    print(filter(df.changes, !is.na(id)))
+    sql <- "UPDATE player SET {`key`} = {val} WHERE id == {id};"
+    filter(df.changes, !is.na(id)) %>%
+      group_by(id, key) %>%
+      summarise(prv = first(prv), val = last(val), .groups = "drop") %>%
+      mutate(across(everything(), as.character)) %>% 
+      with(glue::glue_sql(sql, .con = con)) %>%
+      lapply(\(ele) {
+        res <- DBI::dbSendStatement(con = con, statement = ele)
+        status <- c(ele, DBI::dbHasCompleted(res), DBI::dbGetRowsAffected(res))
+        DBI::dbClearResult(res)
+        setNames(status, c("sql", "success", "n"))
+      }) %>%
+        bind_rows() %>%
+        print()
+    
+    DBI::dbDisconnect(con)
   })
 })
