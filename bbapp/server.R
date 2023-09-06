@@ -136,66 +136,66 @@ server <- shinyServer(function(input, output) {
     data <- match()
     data$v_roster %>%
       select(id, team, player) %>%
-      rhandsontable(team_color = data$v_roster$color, player_color = as.list(with(data$v_roster, setNames(color, player)))) %>%
+      rhandsontable(rowHeaders = NULL, team_color = data$v_roster$color, player_color = as.list(with(data$v_roster, setNames(color, player)))) %>%
+      hot_col("id", readOnly = T) %>%
       hot_col(c("team", "player"), renderer = renderer.color)
   })
 
   output$player <- renderRHandsontable({
     mutate(match()$player, name = as.character(name)) %>%
-      rhandsontable(rowHeaders = NULL)
+      rhandsontable(rowHeaders = NULL) %>%
+      hot_col("id", readOnly = T)
   })
 
   values <- reactiveValues(
-    changes = data.frame(id=integer(0), key=character(0), prv=character(0), val=character(0))
+    changes = data.frame()
   )
-  
-  observeEvent(input$player$changes$changes,{
+
+  observeEvent(input$player$changes$changes, {
     changes <- input$player$changes$changes[[1]]
     coor <- 1 + as.integer(lapply(1:2, \(idx) changes[[idx]]))
-    values$changes <- with(
-      input$player$params,
-      bind_rows(
-        values$changes,
-        setNames(
-          c(data[[coor[1]]][1], colHeaders[[coor[2]]][1], lapply(3:4, \(idx) changes[[idx]])),
-          names(values$changes)
-        )
-      )
-    )
+    row <- with(input$player$params, setNames(data[[coor[1]]], colHeaders))
+    row[sapply(row, is.null)] <- NA
+    values$changes <- bind_rows(values$changes, row)
   })
-  
+
   observeEvent(input$save, {
     df.changes <- values$changes
+    saveRDS(df.changes, file = "obj.rds")
     
     con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
     
-    idx <- with(df.changes, which(is.na(id) & key == "name"))
+    # new rows have missing id, so insert them and assign a new one
+    idx <- which(is.na(df.changes$id))
     if (length(idx) > 0) {
-      df.changes[idx, ]$id <- lapply(df.changes[idx, ]$val, \(ele) 
-        DBI::dbGetQuery(
-          con,
-          "INSERT INTO player VALUES (NULL, ?, NULL) RETURNING id;",
-          params = ele
-        )
+      df.changes[idx, ]$id <- DBI::dbGetQuery(
+        conn = con,
+        str_c("INSERT INTO player VALUES (", str_c(rep("?", length(df.changes)), collapse=", "), ") RETURNING id;"),
+        params = unname(as.list(df.changes[idx, ]))
       )
     }
-    print(df.changes)
-    print(filter(df.changes, !is.na(id)))
-    sql <- "UPDATE player SET {`key`} = {val} WHERE id == {id};"
-    filter(df.changes, !is.na(id)) %>%
-      group_by(id, key) %>%
-      summarise(prv = first(prv), val = last(val), .groups = "drop") %>%
-      mutate(across(everything(), as.character)) %>% 
-      with(glue::glue_sql(sql, .con = con)) %>%
+    
+    # changed rows have an id to coordinate the update
+    df.changes %>%
+      pivot_longer(-id, values_drop_na = T) %>%
+      # get the latest updated value
+      group_by(id, name) %>%
+      slice_tail(n = 1) %>%
+      ungroup() %>%
+      # generate/run SQL
+      with(glue::glue_sql("UPDATE player SET {`name`} = {value} WHERE id == {id};", .con = con)) %>%
       lapply(\(ele) {
         res <- DBI::dbSendStatement(con = con, statement = ele)
         status <- c(ele, DBI::dbHasCompleted(res), DBI::dbGetRowsAffected(res))
         DBI::dbClearResult(res)
         setNames(status, c("sql", "success", "n"))
       }) %>%
-        bind_rows() %>%
-        print()
+      bind_rows() %>%
+      print()
     
+    # TODO: clear changes cache
+    # TODO: reload currentdata
+
     DBI::dbDisconnect(con)
   })
 })

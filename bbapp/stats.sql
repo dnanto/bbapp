@@ -7,36 +7,28 @@
 ATTACH "stats.sdb" AS "stats";
 BEGIN;
 CREATE TABLE "stats"."player"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "name" TEXT NOT NULL,
   "alias" TEXT,
   CONSTRAINT "uq_player_idx"
     UNIQUE("name","alias")
 );
 CREATE TABLE "stats"."team"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "year" INTEGER NOT NULL,
+  "season" INTEGER NOT NULL,
+  "session" INTEGER NOT NULL,
   "name" TEXT NOT NULL,
   "color" TEXT NOT NULL,
-  "captain" INTEGER,
-  "co-captain" INTEGER,
-  "year" INTEGER NOT NULL,
-  "season" DECIMAL NOT NULL,
   CONSTRAINT "uq_team_idx"
-    UNIQUE("name","year","season"),
-  CONSTRAINT "fk_team_captain"
-    FOREIGN KEY("captain")
-    REFERENCES "player"("id"),
-  CONSTRAINT "fk_team_co-captain"
-    FOREIGN KEY("co-captain")
-    REFERENCES "player"("id")
+    UNIQUE("year","season","session","name")
 );
-CREATE INDEX "stats"."team.fk_team_player1_idx" ON "team" ("captain");
-CREATE INDEX "stats"."team.fk_team_player2_idx" ON "team" ("co-captain");
 CREATE TABLE "stats"."roster"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "team" INTEGER NOT NULL,
   "player" INTEGER NOT NULL,
-  CONSTRAINT "uq_team_idx"
+  "captain" TEXT,
+  CONSTRAINT "uq_roster_idx"
     UNIQUE("team","player"),
   CONSTRAINT "fk_roster_team"
     FOREIGN KEY("team")
@@ -48,20 +40,20 @@ CREATE TABLE "stats"."roster"(
 CREATE INDEX "stats"."roster.fk_roster_team_idx" ON "roster" ("team");
 CREATE INDEX "stats"."roster.fk_roster_player_idx" ON "roster" ("player");
 CREATE TABLE "stats"."foul"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "call" TEXT NOT NULL,
   CONSTRAINT "uq_foul_idx"
     UNIQUE("call")
 );
 CREATE TABLE "stats"."rink"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "name" TEXT NOT NULL,
   "address" TEXT NOT NULL,
   CONSTRAINT "uq_rink_idx"
     UNIQUE("name")
 );
 CREATE TABLE "stats"."legacy"(
-  "roster" INTEGER PRIMARY KEY NOT NULL,
+  "roster" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "G" INTEGER NOT NULL DEFAULT 0,
   "A" INTEGER NOT NULL DEFAULT 0,
   "PIM" INTEGER NOT NULL DEFAULT 0,
@@ -81,7 +73,7 @@ CREATE TABLE "stats"."legacy"(
     REFERENCES "roster"("id")
 );
 CREATE TABLE "stats"."match"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "team1" INTEGER NOT NULL,
   "team2" INTEGER NOT NULL,
   "week" INTEGER NOT NULL,
@@ -104,7 +96,7 @@ CREATE INDEX "stats"."match.fk_match_team1_idx" ON "match" ("team1");
 CREATE INDEX "stats"."match.fk_match_team2_idx" ON "match" ("team2");
 CREATE INDEX "stats"."match.fk_match_rink_idx" ON "match" ("rink");
 CREATE TABLE "stats"."point"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "match" INTEGER NOT NULL,
   "team" INTEGER NOT NULL,
   "shooter" INTEGER NOT NULL,
@@ -139,7 +131,7 @@ CREATE INDEX "stats"."point.fk_point_assist1_idx" ON "point" ("assist1");
 CREATE INDEX "stats"."point.fk_point_assist2_idx" ON "point" ("assist2");
 CREATE INDEX "stats"."point.fk_point_goalie_idx" ON "point" ("goalie");
 CREATE TABLE "stats"."penalty"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "match" INTEGER NOT NULL,
   "team" INTEGER NOT NULL,
   "player" INTEGER,
@@ -172,10 +164,10 @@ CREATE INDEX "stats"."penalty.fk_penalty_server_idx" ON "penalty" ("server");
 CREATE INDEX "stats"."penalty.fk_penalty_goalie_idx" ON "penalty" ("goalie");
 CREATE INDEX "stats"."penalty.fk_penalty_foul_idx" ON "penalty" ("foul");
 CREATE TABLE "stats"."shot"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "match" INTEGER NOT NULL,
   "team" INTEGER NOT NULL,
-  "goalie" INTEGER NULL,
+  "goalie" INTEGER,
   "SH" INTEGER NOT NULL,
   "period" INTEGER,
   CONSTRAINT "fk_shot_match"
@@ -188,6 +180,17 @@ CREATE TABLE "stats"."shot"(
 CREATE INDEX "stats"."shot.fk_shot_match_idx" ON "shot" ("match");
 CREATE INDEX "stats"."shot.fk_shot_player_idx" ON "shot" ("goalie");
 
+-- triggers 
+
+CREATE TRIGGER "stats"."match_team_check"
+BEFORE INSERT ON match
+WHEN (
+  SELECT year, season FROM team WHERE name == NEW.team1) != (SELECT year, season FROM team WHERE name == NEW.team2
+  )
+BEGIN
+    SELECT RAISE(FAIL, "the teams for this match are not part of the same year/season");
+END;
+
 -- views
 
 CREATE VIEW "stats"."v_point" AS
@@ -199,7 +202,7 @@ SELECT
   period, time, EV, PP, SH, EN
 FROM point
 LEFT JOIN match ON match == match.id
-LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
 LEFT JOIN player AS player1 ON shooter == player1.id
 LEFT JOIN player AS player2 ON assist1 == player2.id
 LEFT JOIN player AS player3 ON assist2 == player3.id
@@ -216,7 +219,7 @@ SELECT
   duration, period, time, scored
 FROM penalty
 LEFT JOIN match ON match == match.id
-LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
 LEFT JOIN player AS player1 ON player == player1.id
 LEFT JOIN player AS player2 ON server == player2.id
 LEFT JOIN player AS player3 ON goalie == player3.id
@@ -232,7 +235,7 @@ SELECT
   SH, period
 FROM shot
 LEFT JOIN match ON match == match.id
-LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
 LEFT JOIN player ON goalie == player.id
 ;
 
@@ -256,21 +259,21 @@ SELECT
   player_1.name AS source, player_2.name AS target, 
   "type"
 FROM (
-  SELECT id, match, team AS team_id, coalesce(assist1, shooter) AS player_1_id, shooter AS player_2_id, iif(assist1, "A1", "A0") AS "type" FROM point
+  SELECT id, match, team AS team_id, COALESCE(assist1, shooter) AS player_1_id, shooter AS player_2_id, IIF(assist1, "A1", "A0") AS "type" FROM point
   UNION
   SELECT id, match, team, assist2, assist1, "A2" FROM point WHERE assist2 IS NOT NULL
 ) AS point
 LEFT JOIN player AS player_1 ON player_1_id == player_1.id
 LEFT JOIN player AS player_2 ON player_2_id == player_2.id
 LEFT JOIN match ON match == match.id
-LEFT JOIN team ON iif(team_id == 1, team1, team2) == team.id
+LEFT JOIN team ON IIF(team_id == 1, team1, team2) == team.id
 ;
 
 CREATE VIEW "stats"."v_matchup" AS
 SELECT 
   team.year, team.season, x.week, x.game, 
   x.match_id, x.team_id, team.name AS team, team.color, rink.name AS rink, 
-  IFNULL(score, 0) AS score
+  COALESCE(score, 0) AS score
 FROM
 (
   SELECT id AS match_id, week, game, team1 AS team_id, rink AS rink_id FROM match 
@@ -281,7 +284,7 @@ LEFT JOIN
 (
   SELECT match.id AS match_id, team.id AS team_id, COUNT(*) AS score FROM point
   LEFT JOIN match ON match = match.id
-  LEFT JOIN team ON iif(team == 1, team1, team2) == team.id
+  LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
   GROUP BY match_id, team_id
 ) AS y
 ON x.match_id == y.match_id AND x.team_id == y.team_id
