@@ -1,6 +1,8 @@
 server <- shinyServer(function(input, output) {
   match <- eventReactive(input$load, {
     con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    DBI::dbExecute(con, "PRAGMA foreign_keys=on;")
+    
     params <- lapply(c("year", "season", "week", "game"), \(ele) input[[ele]])
 
     match <- list()
@@ -168,6 +170,7 @@ server <- shinyServer(function(input, output) {
     print(c("changed", changed))
 
     con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    DBI::dbExecute(con, "PRAGMA foreign_keys=on;")
 
     # DELETE
     if (length(deleted) > 0) {

@@ -32,10 +32,12 @@ CREATE TABLE "stats"."roster"(
     UNIQUE("team","player"),
   CONSTRAINT "fk_roster_team"
     FOREIGN KEY("team")
-    REFERENCES "team"("id"),
+    REFERENCES "team"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_roster_player"
     FOREIGN KEY("player")
     REFERENCES "player"("id")
+    ON DELETE CASCADE
 );
 CREATE INDEX "stats"."roster.fk_roster_team_idx" ON "roster" ("team");
 CREATE INDEX "stats"."roster.fk_roster_player_idx" ON "roster" ("player");
@@ -71,6 +73,7 @@ CREATE TABLE "stats"."legacy"(
   CONSTRAINT "fk_legacy_roster"
     FOREIGN KEY("roster")
     REFERENCES "roster"("id")
+    ON DELETE CASCADE
 );
 CREATE TABLE "stats"."match"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -84,13 +87,16 @@ CREATE TABLE "stats"."match"(
     UNIQUE("team1","team2","week","game"),
   CONSTRAINT "fk_match_team1"
     FOREIGN KEY("team1")
-    REFERENCES "team"("id"),
+    REFERENCES "team"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_match_team2"
     FOREIGN KEY("team2")
-    REFERENCES "team"("id"),
+    REFERENCES "team"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_match_rink"
     FOREIGN KEY("rink")
     REFERENCES "rink"("id")
+    ON DELETE CASCADE
 );
 CREATE INDEX "stats"."match.fk_match_team1_idx" ON "match" ("team1");
 CREATE INDEX "stats"."match.fk_match_team2_idx" ON "match" ("team2");
@@ -111,19 +117,24 @@ CREATE TABLE "stats"."point"(
   "EN" INTEGER NOT NULL,
   CONSTRAINT "fk_point_match"
     FOREIGN KEY("match")
-    REFERENCES "match"("id"),
+    REFERENCES "match"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_point_shooter"
     FOREIGN KEY("shooter")
-    REFERENCES "player"("id"),
+    REFERENCES "player"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_point_assist1"
     FOREIGN KEY("assist1")
-    REFERENCES "player"("id"),
+    REFERENCES "player"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_point_assist2"
     FOREIGN KEY("assist2")
-    REFERENCES "player"("id"),
+    REFERENCES "player"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_point_goalie"
     FOREIGN KEY("goalie")
     REFERENCES "player"("id")
+    ON DELETE CASCADE
 );
 CREATE INDEX "stats"."point.fk_point_match_idx" ON "point" ("match");
 CREATE INDEX "stats"."point.fk_point_shooter_idx" ON "point" ("shooter");
@@ -144,19 +155,24 @@ CREATE TABLE "stats"."penalty"(
   "scored" INTEGER,
   CONSTRAINT "fk_penalty_match"
     FOREIGN KEY("match")
-    REFERENCES "match"("id"),
+    REFERENCES "match"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_penalty_player"
     FOREIGN KEY("player")
-    REFERENCES "player"("id"),
+    REFERENCES "player"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_penalty_server"
     FOREIGN KEY("server")
-    REFERENCES "player"("id"),
+    REFERENCES "player"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_penalty_goalie"
     FOREIGN KEY("goalie")
-    REFERENCES "player"("id"),
-  CONSTRAINT "fk_penalty_foul1"
+    REFERENCES "player"("id")
+    ON DELETE CASCADE,
+  CONSTRAINT "fk_penalty_foul"
     FOREIGN KEY("foul")
     REFERENCES "foul"("id")
+    ON DELETE CASCADE
 );
 CREATE INDEX "stats"."penalty.fk_penalty_match_idx" ON "penalty" ("match");
 CREATE INDEX "stats"."penalty.fk_penalty_player_idx" ON "penalty" ("player");
@@ -172,10 +188,12 @@ CREATE TABLE "stats"."shot"(
   "period" INTEGER,
   CONSTRAINT "fk_shot_match"
     FOREIGN KEY("match")
-    REFERENCES "match"("id"),
+    REFERENCES "match"("id")
+    ON DELETE CASCADE,
   CONSTRAINT "fk_shot_goalie"
     FOREIGN KEY("goalie")
     REFERENCES "player"("id")
+    ON DELETE CASCADE
 );
 CREATE INDEX "stats"."shot.fk_shot_match_idx" ON "shot" ("match");
 CREATE INDEX "stats"."shot.fk_shot_player_idx" ON "shot" ("goalie");
