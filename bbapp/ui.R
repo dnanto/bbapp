@@ -1,9 +1,11 @@
 ui <- shinyUI(
   fluidPage(
+    shinyjs::useShinyjs(),
     sidebarLayout(
       sidebarPanel(
         numericInput("year", "year", value = year(today()), width = "100%"),
         selectInput("season", "season", choices = seasons, width = "100%"),
+        numericInput("session", "session", value = 1, min = 1, width = "100%"),
         numericInput("week", "week", value = 1, min = 1, width = "100%"),
         numericInput("game", "game", value = 1, min = 1, width = "100%"),
         actionButton("load", "load", width = "100%"),
@@ -13,20 +15,28 @@ ui <- shinyUI(
       ),
       mainPanel(
         tabsetPanel(
-          tabPanel("match", 
-            textOutput("matchup"),
-            visNetworkOutput("assist"),
+          tabPanel(
+            "season",
             tabsetPanel(
-              tabPanel("point", rHandsontableOutput("point", height = 750)),
-              tabPanel("penalty", rHandsontableOutput("penalty", height = 750)),
-              tabPanel("shot", rHandsontableOutput("shot", height = 750)),
-              tabPanel("note")
-            )
+              tabPanel(
+                "match",
+                textOutput("matchup"),
+                visNetworkOutput("assist"),
+                tabsetPanel(
+                  tabPanel("point", rHandsontableOutput("point", height = 750)),
+                  tabPanel("penalty", rHandsontableOutput("penalty", height = 750)),
+                  tabPanel("shot", rHandsontableOutput("shot", height = 750)),
+                  tabPanel("note"),
+                  type = "pills"
+                )
+              ),
+              tabPanel("roster", rHandsontableOutput("roster", height = 750)),
+              type = "pills"
+            ),
           ),
-          tabPanel("roster", rHandsontableOutput("roster", height = 750)),
+          tabPanel("team", rHandsontableOutput("team", height = 750)),
           tabPanel("player", rHandsontableOutput("player", height = 750))
-        ),
-        width = 10
+        )
       )
     )
   )

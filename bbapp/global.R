@@ -7,11 +7,6 @@ library(tidyverse)
 seasons <- setNames(21:24, c("Spring", "Summer", "Autumn", "Winter"))
 types <- c("EV", "PP", "SH", "EN")
 
-df.ui <- (
-  read_tsv("ui.tsv") %>% 
-    split(.$section)
-)
-
 df.colors <- (
   colors() %>% 
     lapply(\(ele) c(color = ele, t(col2rgb(ele))[1,])) %>% 
@@ -35,7 +30,7 @@ renderer.color <- (
     function(instance, td, row, col, prop, value, cellProperties) {
       Handsontable.renderers.TextRenderer.apply(this, arguments);
       if (instance.params) {
-        if (instance.getColHeader()[col] === 'team') {
+        if (instance.getColHeader()[col] === 'team' || instance.getColHeader()[col] === 'color') {
           color = instance.params.team_color;
           color = color instanceof Array ? color : [color];
           td.style.borderColor = color[row];
