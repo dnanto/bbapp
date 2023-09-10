@@ -203,10 +203,10 @@ CREATE INDEX "stats"."shot.fk_shot_player_idx" ON "shot" ("goalie");
 CREATE TRIGGER "stats"."match_team_check"
 BEFORE INSERT ON match
 WHEN (
-  SELECT year, season FROM team WHERE name == NEW.team1) != (SELECT year, season FROM team WHERE name == NEW.team2
-  )
+  SELECT year, season, session FROM team WHERE name == NEW.team1) != (SELECT year, season, session FROM team WHERE name == NEW.team2
+)
 BEGIN
-    SELECT RAISE(FAIL, "the teams for this match are not part of the same year/season");
+    SELECT RAISE(FAIL, "the teams for this match are not of the same year, season, & session");
 END;
 
 -- views
@@ -214,7 +214,7 @@ END;
 CREATE VIEW "stats"."v_point" AS
 SELECT
   point.id,
-  team.year, team.season, match.game, match.week,
+  team.year, team.season, team.session, match.game, match.week,
   team.name AS team, team.color,
   player1.name AS shooter, player2.name AS assist1, player3.name AS assist2, player4.name AS goalie,
   period, time, EV, PP, SH, EN
@@ -230,7 +230,7 @@ LEFT JOIN player AS player4 ON goalie == player4.id
 CREATE VIEW "stats"."v_penalty" AS
 SELECT
   penalty.id,
-  team.year, team.season, match.game, match.week,
+  team.year, team.season, team.session, match.game, match.week,
   team.name AS team, team.color,
   player1.name AS player, player2.name AS server, player3.name AS goalie,
   foul.call,
@@ -247,7 +247,7 @@ LEFT JOIN foul ON foul == foul.id
 CREATE VIEW "stats"."v_shot" AS
 SELECT
   shot.id,
-  team.year, team.season, match.game, match.week,
+  team.year, team.season, team.session, match.game, match.week,
   team.name AS team, team.color,
   player.name AS goalie,
   SH, period
@@ -260,7 +260,7 @@ LEFT JOIN player ON goalie == player.id
 CREATE VIEW "stats"."v_roster" AS
 SELECT 
   roster.id, roster.team AS team_id, roster.player AS player_id,
-  team.year, team.season, team.name AS team, team.color, 
+  team.year, team.season, team.session, team.name AS team, team.color, 
   player.name AS player FROM roster
 LEFT JOIN team ON team == team.id
 LEFT JOIN player ON player == player.id
@@ -270,7 +270,7 @@ CREATE VIEW "stats"."v_assist" AS
 SELECT 
   ROW_NUMBER() OVER() AS assist_id, 
   point.id AS point_id,
-  team.year, team.season,
+  team.year, team.season, team.session,
   match.week, match.game,
   team.name AS team, team.color,
   player_1.id AS source_id, player_2.id AS target_id,
@@ -289,7 +289,7 @@ LEFT JOIN team ON IIF(team_id == 1, team1, team2) == team.id
 
 CREATE VIEW "stats"."v_matchup" AS
 SELECT 
-  team.year, team.season, x.week, x.game, 
+  team.year, team.season, team.session, x.week, x.game, 
   x.match_id, x.team_id, team.name AS team, team.color, rink.name AS rink, 
   COALESCE(score, 0) AS score
 FROM

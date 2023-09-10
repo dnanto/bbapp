@@ -16,7 +16,7 @@ df.colors <- (
 )
 
 hex_to_color <- Vectorize(
-  \(ele) {
+  function(ele) {
     str_match(ele, "^#(?<r>[A-F0-9]{2})(?<g>[A-F0-9]{2})(?<b>[A-F0-9]{2})([A-F0-9]{2})?$") %>% 
       .[2:4] %>% 
       sapply(\(ele) strtoi(str_c("0x", ele))) %>%

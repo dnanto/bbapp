@@ -1,6 +1,11 @@
 ui <- shinyUI(
   fluidPage(
     shinyjs::useShinyjs(),
+    tags$script("
+      select_view = function(id) { 
+        Shiny.onInputChange('select_view', id);
+      }
+    "),
     sidebarLayout(
       sidebarPanel(
         numericInput("year", "year", value = year(today()), width = "100%"),
@@ -15,8 +20,9 @@ ui <- shinyUI(
       ),
       mainPanel(
         tabsetPanel(
+          id = "tabset",
           tabPanel(
-            "season",
+            "view",
             tabsetPanel(
               tabPanel(
                 "match",
@@ -34,6 +40,7 @@ ui <- shinyUI(
               type = "pills"
             ),
           ),
+          tabPanel("season", rHandsontableOutput("links")),
           tabPanel("team", rHandsontableOutput("team", height = 750)),
           tabPanel("player", rHandsontableOutput("player", height = 750))
         )
