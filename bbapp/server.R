@@ -1,20 +1,88 @@
 server <- shinyServer(function(input, output, session) {
+  yss <- eventReactive(input$set_yss, {
+    as.integer(str_split_fixed(input$set_yss, "_", 3))
+  })
 
-  match <- eventReactive(c(input$load, input$select_view), {
+  output$yss <- renderRHandsontable({
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+
+    template <- str_squish("
+      <span class='toggle'>
+        <label>
+          <input id='{year[1]}_{season[1]}_{session[idx]}' name='yss' type='radio' onclick='set_yss(this.id);'>{session[idx]}
+        </label>
+      </span>
+    ")
+    data <- (
+      DBI::dbReadTable(con, "team") %>%
+        distinct(year, season, session) %>%
+        mutate(
+          label = names(seasons[season - min(seasons) + 1]),
+          season = factor(season, levels = seasons)
+        ) %>%
+        group_by(year, season) %>%
+        summarise(
+          value = str_c(lapply(seq_along(session), \(idx) glue::glue(template)), collapse = ""),
+          .groups = "drop"
+        ) %>%
+        pivot_wider(names_from = season, names_expand = T, values_from = value, values_fill = "x") %>%
+        arrange(desc(year)) %>%
+        rhandsontable(
+          colHeaders = c("year", names(seasons)),
+          allowedTags = "<span><label><input>",
+          disableVisualSelection = T
+        ) %>%
+        hot_cols(
+          readOnly = T,
+          renderer = htmlwidgets::JS("safeHtmlRenderer")
+        )
+    )
+    DBI::dbDisconnect(con)
+    data
+  })
+
+  output$wg <- renderRHandsontable({
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    template <- str_squish("
+      <span class='toggle'>
+        <label>
+          <input id='{week}_{game}' name='wg' type='radio' onclick='set_wg(this.id);'>({week}, {game})
+        </label>
+      </span>
+    ")
+    data <- (
+      DBI::dbGetQuery(
+        con,
+        "SELECT DISTINCT week, game FROM v_matchup WHERE year == ? AND season == ? AND session == ?;",
+        params = yss()
+      ) %>%
+        arrange(desc(week)) %>%
+        mutate(
+          value = glue::glue(template)
+        ) %>%
+        pivot_wider(names_from = game, names_sort = T, values_from = value, values_fill = "x") %>%
+        select(-week) %>%
+        rhandsontable(
+          allowedTags = "<span><label><input>",
+          disableVisualSelection = T
+        ) %>%
+        hot_cols(
+          readOnly = T,
+          renderer = htmlwidgets::JS("safeHtmlRenderer")
+        )
+    )
+    DBI::dbDisconnect(con)
+    data
+  })
+
+  match <- eventReactive(input$set_wg, {
     con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
     DBI::dbExecute(con, "PRAGMA foreign_keys=on;")
 
-    params <- lapply(c("year", "season", "session", "week", "game"), \(ele) input[[ele]])
-    if (!is.null(input$select_view)) {
-      tokens <- as.integer(str_split_fixed(input$select_view, "_", 3))
-      updateNumericInput(session, "year", value = tokens[1])
-      updateSelectInput(session, "season", selected = tokens[2])
-      updateNumericInput(session, "session", value = tokens[3])
-      updateTabsetPanel(session, "tabset", selected = "view")
-      params[seq_along(tokens)] <- tokens
-    }
+    params <- c(yss(), as.integer(str_split_fixed(input$set_wg, "_", 2)))
 
     match <- list()
+
     match$team <- (
       DBI::dbReadTable(con, "team") %>%
         mutate(name = as.factor(name))
@@ -49,24 +117,25 @@ server <- shinyServer(function(input, output, session) {
       match,
       sapply(
         c("v_point", "v_penalty", "v_shot", "v_assist"),
-        \(ele)
-        DBI::dbGetQuery(
-          con,
-          glue::glue_sql(
-            "SELECT * FROM {`ele`} WHERE year == ? AND season == ? AND session == ? AND week == ? AND game == ?;",
-            .con = con
-          ),
-          params = params
-        ) %>%
-          mutate(
-            team = factor(team, levels = match$v_matchup$team),
-            across(
-              any_of(c("shooter", "assist1", "assist2", "player", "server", "goalie")),
-              factor,
-              levels = unique(sort(as.character(match$v_roster$player)))
+        function(ele) {
+          DBI::dbGetQuery(
+            con,
+            glue::glue_sql(
+              "SELECT * FROM {`ele`} WHERE year == ? AND season == ? AND session == ? AND week == ? AND game == ?;",
+              .con = con
             ),
-            across(any_of(c("call")), factor, levels = levels(match$foul$call))
-          )
+            params = params
+          ) %>%
+            mutate(
+              team = factor(team, levels = match$v_matchup$team),
+              across(
+                any_of(c("shooter", "assist1", "assist2", "player", "server", "goalie")),
+                factor,
+                levels = unique(sort(as.character(match$v_roster$player)))
+              ),
+              across(any_of(c("call")), factor, levels = levels(match$foul$call))
+            )
+        }
       )
     )
     match$v_point <- mutate(match$v_point, across(types, as.logical))
@@ -75,47 +144,13 @@ server <- shinyServer(function(input, output, session) {
     match
   })
 
-  output$links <- renderRHandsontable({
-    data <- (
-      match()$team %>%
-        distinct(year, season, session) %>%
-        mutate(season = names(seasons[season - min(seasons) + 1])) %>%
-        group_by(year, season) %>%
-        summarise(value = str_c(session, collapse = ","), .groups = "drop") %>%
-        pivot_wider(names_from = season, values_from = value)
-    )
-    year <- data$year
-    select(data, -year) %>%
-      rhandsontable(rowHeaders = year, allowedTags = "<button>", seasons = as.list(seasons)) %>%
-      hot_cols(
-        renderer = "
-            function(instance, td, row, col, prop, value, cellProperties) {
-              Handsontable.renderers.TextRenderer.apply(this, arguments);
-              if (instance.params && value !== null) {
-                td.innerHTML = (
-                  value.split(',').map(
-                    (ele) => (
-                      '<button id=\"' +
-                      instance.getRowHeader()[row] + '_' + instance.params.seasons[instance.getColHeader()[col]] + '_' + ele +
-                      '\" type=\"button\" class=\"btn btn-default action-button\" onclick =\"select_view(this.id);\">' +
-                      ele +
-                      '</button>'
-                    )
-                  ).join('')
-                );
-              }
-            }
-        ",
-        
-      )
-  })
-
   output$matchup <- renderText({
     with(
       match()$v_matchup,
       str_c(str_glue("{team[1]} vs. {team[2]}"), if (is.na(rink[1])) c() else rink[1], sep = " @ ") %>%
         str_c(str_glue("{score[1]} - {score[2]}"), sep = ": ")
-    )
+    ) %>%
+      str_c("<b>", ., "</b>", sep = "")
   })
 
   output$assist <- renderVisNetwork({
@@ -123,7 +158,8 @@ server <- shinyServer(function(input, output, session) {
     nodes <- (
       data.frame(id = with(data$v_assist, unique(c(source_id, target_id)))) %>%
         left_join(data$v_roster, by = join_by(id == player_id), suffix = c("", ".roster")) %>%
-        mutate(label = player)
+        mutate(label = player) %>%
+        rename(color.background = color)
     )
     edges <- (
       mutate(
@@ -135,7 +171,11 @@ server <- shinyServer(function(input, output, session) {
         dashes = type == "A2"
       )
     )
-    visNetwork(nodes = nodes, edges = edges, background = "lightgrey")
+    visNetwork(nodes = nodes, edges = edges, background = "#DCDCDC") %>%
+      visNodes(
+        borderWidth = 4,
+        color = list(border = "black")
+      )
   })
 
   output$point <- renderRHandsontable({
@@ -202,7 +242,7 @@ server <- shinyServer(function(input, output, session) {
     changed = sapply(c("team", "player", "roster"), \(ele) NULL)
   )
 
-  objdevnull <- lapply(
+  lapply(
     c("team", "player", "roster"),
     function(ele) {
       observeEvent(input[[ele]]$changes$changes, {
@@ -260,7 +300,7 @@ server <- shinyServer(function(input, output, session) {
             ungroup() %>%
             # generate/run SQL
             with(glue::glue_sql("UPDATE {`ele`} SET {`name`} = {value} WHERE id == {id};", .con = con)) %>%
-            lapply(\(ele) {
+            lapply(function(ele) {
               res <- DBI::dbSendStatement(con = con, statement = ele)
               status <- c(ele, DBI::dbHasCompleted(res), DBI::dbGetRowsAffected(res))
               DBI::dbClearResult(res)
@@ -273,8 +313,6 @@ server <- shinyServer(function(input, output, session) {
         values$changed[[ele]] <- values$changed[[ele]][0]
       }
     )
-
-    shinyjs::click("load")
 
     DBI::dbDisconnect(con)
   })
