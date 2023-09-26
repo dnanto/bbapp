@@ -27,7 +27,7 @@ CREATE TABLE "stats"."roster"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "team" INTEGER NOT NULL,
   "player" INTEGER NOT NULL,
-  "captain" TEXT,
+  "captain" INTEGER,
   CONSTRAINT "uq_roster_idx"
     UNIQUE("team","player"),
   CONSTRAINT "fk_roster_team"
@@ -79,6 +79,8 @@ CREATE TABLE "stats"."match"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "team1" INTEGER NOT NULL,
   "team2" INTEGER NOT NULL,
+  "date" TEXT,
+  "time" TEXT,
   "week" INTEGER NOT NULL,
   "game" INTEGER NOT NULL,
   "rink" INTEGER,
@@ -217,7 +219,7 @@ SELECT
   team.year, team.season, team.session, match.game, match.week,
   team.name AS team, team.color,
   player1.name AS shooter, player2.name AS assist1, player3.name AS assist2, player4.name AS goalie,
-  period, time, EV, PP, SH, EN
+  period, point.time, EV, PP, SH, EN
 FROM point
 LEFT JOIN match ON match == match.id
 LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
@@ -234,7 +236,7 @@ SELECT
   team.name AS team, team.color,
   player1.name AS player, player2.name AS server, player3.name AS goalie,
   foul.call,
-  duration, period, time, scored
+  duration, period, penalty.time, scored
 FROM penalty
 LEFT JOIN match ON match == match.id
 LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
@@ -259,9 +261,9 @@ LEFT JOIN player ON goalie == player.id
 
 CREATE VIEW "stats"."v_roster" AS
 SELECT 
-  roster.id, roster.team AS team_id, roster.player AS player_id,
+  roster.id, roster.team AS team_id, roster.player AS player_id, roster.captain,
   team.year, team.season, team.session, team.name AS team, team.color, 
-  player.name AS player FROM roster
+  player.name AS player, player.alias AS alias FROM roster
 LEFT JOIN team ON team == team.id
 LEFT JOIN player ON player == player.id
 ;
