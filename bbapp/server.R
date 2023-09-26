@@ -281,7 +281,7 @@ server <- shinyServer(function(input, output, session) {
       data.frame(
         team = c("home", "away", "home", "away"),
         goalie = "",
-        SH = 0,
+        SH = NA,
         period = c(1, 2, 1, 2)
       ) %>%
         mutate(
@@ -336,7 +336,7 @@ server <- shinyServer(function(input, output, session) {
         mutate(
           across(c(player, server, goalie), \(ele) factor(ele, levels = c("", v_roster$label))),
           across(c(duration, period), \(ele) as.integer(ele)),
-          foul = factor(foul, levels = df.foul$call),
+          foul = factor(foul, levels = with(df.foul, glue::glue("{id}. {call}"))),
           team = factor(team, levels = c("home", "away")),
         ) %>%
         rhandsontable(stretchH = "all") %>%
@@ -344,6 +344,69 @@ server <- shinyServer(function(input, output, session) {
     })
 
     DBI::dbDisconnect(con)
+  })
+  
+  observeEvent(input$submit_record, {
+    conn <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    
+    match_id <- (
+      DBI::dbGetQuery(
+        conn = conn,
+        "INSERT INTO match VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;",
+        params = c(NA, input$home,input$away, input$date, input$time, input$week, input$game, input$rink, NA)
+      )
+    )
+    team_to_id <- setNames(c(1, 2), c("home", "away"))
+    
+    df.shot <- hot_to_r(input$record_shot)
+    if(!is.null(df.shot)) {
+      df.shot %>%
+        mutate(
+          id = NA,
+          match = match_id$id,
+          team = team_to_id[team]
+        ) %>%
+        separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
+        select(id, match, team, goalie, SH, period) %>%
+        DBI::dbAppendTable(conn, "shot", value = .) %>%
+        print()
+    }
+    df.point <- hot_to_r(input$record_point)
+    if (!is.null(df.point)) {
+        df.point %>%
+          mutate(
+            id = NA,
+            match = match_id$id,
+            team = team_to_id[team],
+            across(all_of(c("EV", "PP", "SH", "EN")), \(ele) as.integer(ele))
+          ) %>%
+          separate(shooter, c("shooter", "shooter.name"), ". ", extra = "merge", fill = "right") %>%
+          separate(assist1, c("assist1", "assist1.name"), ". ", extra = "merge", fill = "right") %>%
+          separate(assist2, c("assist2", "assist2.name"), ". ", extra = "merge", fill = "right") %>%
+          separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
+          select(id, match, team, shooter, assist1, assist2, goalie, period, time, EV, PP, SH, EN) %>%
+          DBI::dbAppendTable(conn, "point", value = .) %>%
+          print()
+    }
+    df.penalty <- hot_to_r(input$record_penalty)
+    if (!is.null(df.penalty)) {
+      df.penalty %>%
+        mutate(
+          id = NA,
+          match = match_id$id,
+          team = team_to_id[team],
+          scored = as.integer(scored)
+        ) %>%
+        separate(player, c("player", "player.name"), ". ", extra = "merge", fill = "right") %>%
+        separate(server, c("server", "server.name"), ". ", extra = "merge", fill = "right") %>%
+        separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
+        separate(foul, c("foul", "foul.call"), ". ", extra = "merge") %>%
+        select(id, match, team, player, server, goalie, foul, duration, period, time, scored) %>%
+        DBI::dbAppendTable(conn, "penalty", value = .) %>%
+        print()
+    }
+    
+    DBI::dbDisconnect(conn)
   })
 
   # team

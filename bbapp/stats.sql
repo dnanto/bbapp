@@ -113,10 +113,10 @@ CREATE TABLE "stats"."point"(
   "goalie" INTEGER,
   "period" INTEGER,
   "time" TEXT,
-  "EV" INTEGER NOT NULL,
-  "PP" INTEGER NOT NULL,
-  "SH" INTEGER NOT NULL,
-  "EN" INTEGER NOT NULL,
+  "EV" INTEGER DEFAULT 0,
+  "PP" INTEGER DEFAULT 0,
+  "SH" INTEGER DEFAULT 0,
+  "EN" INTEGER DEFAULT 0,
   CONSTRAINT "fk_point_match"
     FOREIGN KEY("match")
     REFERENCES "match"("id")
@@ -186,7 +186,7 @@ CREATE TABLE "stats"."shot"(
   "match" INTEGER NOT NULL,
   "team" INTEGER NOT NULL,
   "goalie" INTEGER,
-  "SH" INTEGER NOT NULL,
+  "SH" INTEGER,
   "period" INTEGER,
   CONSTRAINT "fk_shot_match"
     FOREIGN KEY("match")

@@ -69,6 +69,7 @@ ui <- shinyUI(
                   selectInput("home", "home", choices = NULL),
                   selectInput("away", "away", choices = NULL),
                   dateInput("date", "date", value = as.Date(now())),
+                  textInput("time", "time"),
                   numericInput("week", "week", value = 1, min = 1),
                   numericInput("game", "game", value = 1, min = 1),
                   selectInput("rink", "rink", choices = NULL),
