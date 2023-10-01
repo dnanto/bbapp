@@ -3,6 +3,7 @@ library(rhandsontable)
 library(visNetwork)
 library(tidyverse)
 
+
 # https://www.loc.gov/standards/datetime/
 seasons <- setNames(21:24, c("Spring", "Summer", "Autumn", "Winter"))
 types <- c("EV", "PP", "SH", "EN")
@@ -29,21 +30,13 @@ renderer.color <- (
   "
     function(instance, td, row, col, prop, value, cellProperties) {
       Handsontable.renderers.TextRenderer.apply(this, arguments);
-      if (instance.params) {
-        if (instance.getColHeader()[col] === 'team' || instance.getColHeader()[col] === 'color') {
-          color = instance.params.team_color;
-          color = color instanceof Array ? color : [color];
-          td.style.borderColor = color[row];
-          td.style.borderStyle = 'dotted';
-          td.style.borderWidth = '2px';
-        } else {
-          if (value !== null) {
-            color = instance.params.player_color;
-            td.style.borderColor = color[value];
-            td.style.borderStyle = 'dotted';
-            td.style.borderWidth = '2px';
-          }
-        }
+      key = instance.getColHeader()[col] + '_color';
+      obj = instance.params
+      if (value !== null && typeof obj === 'object' && obj !== null && key in obj) {
+        color = obj[key];
+        td.style.borderColor = color[value];
+        td.style.borderStyle = 'dotted';
+        td.style.borderWidth = '2px';
       }
       return td;
     }

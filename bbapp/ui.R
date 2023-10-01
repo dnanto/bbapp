@@ -112,9 +112,10 @@ ui <- shinyUI(
           actionButton("submit_roster", "Submit", width = "100%")
         ),
         mainPanel(
-          textOutput("message"),
-          rHandsontableOutput("temp_roster", height = 750),
-          rHandsontableOutput("temp_problems", height = 750)
+          tabsetPanel(
+            tabPanel("team", rHandsontableOutput("upload_team", height = 750)),
+            tabPanel("roster", rHandsontableOutput("upload_roster", height = 750))
+          )
         )
       )
     )

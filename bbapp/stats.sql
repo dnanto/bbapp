@@ -9,9 +9,8 @@ BEGIN;
 CREATE TABLE "stats"."player"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "name" TEXT NOT NULL,
-  "alias" TEXT,
   CONSTRAINT "uq_player_idx"
-    UNIQUE("name","alias")
+    UNIQUE("name")
 );
 CREATE TABLE "stats"."team"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -263,7 +262,7 @@ CREATE VIEW "stats"."v_roster" AS
 SELECT 
   roster.id, roster.team AS team_id, roster.player AS player_id, roster.captain,
   team.year, team.season, team.session, team.name AS team, team.color, 
-  player.name AS player, player.alias AS alias FROM roster
+  player.name AS player FROM roster
 LEFT JOIN team ON team == team.id
 LEFT JOIN player ON player == player.id
 ;

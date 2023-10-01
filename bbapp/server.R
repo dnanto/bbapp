@@ -35,6 +35,8 @@ server <- shinyServer(function(input, output, session) {
   }
 
   output$wg <- function() {
+    req(input$set_yss)
+
     con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
     template <- str_squish("
       <span class='toggle'>
@@ -66,9 +68,9 @@ server <- shinyServer(function(input, output, session) {
     updateTabsetPanel(session, "tabMatch", selected = "tabWG")
     updateTabsetPanel(session, "tabMatchPanels", selected = "match")
   })
-  
+
   observeEvent(input$tabMatchPanels, {
-    if(input$tabMatchPanels == "record") {
+    if (input$tabMatchPanels == "record") {
       updateTabsetPanel(session, "tabMatch", selected = "tabYSS")
     }
   })
@@ -130,13 +132,12 @@ server <- shinyServer(function(input, output, session) {
             params = params
           ) %>%
             mutate(
-              team = factor(team, levels = match$v_matchup$team),
+              team = factor(team, levels = unique(match$v_matchup$team)),
               across(
                 any_of(c("shooter", "assist1", "assist2", "player", "server", "goalie")),
-                factor,
-                levels = unique(sort(as.character(match$v_roster$player)))
+                \(ele) factor(ele, levels = unique(sort(as.character(match$v_roster$player))))
               ),
-              across(any_of(c("call")), factor, levels = levels(match$foul$call))
+              across(any_of(c("call")), \(ele) factor(ele, levels = levels(match$foul$call)))
             )
         }
       )
@@ -159,7 +160,7 @@ server <- shinyServer(function(input, output, session) {
   output$assist <- renderVisNetwork({
     data <- match()
     nodes <- (
-      data.frame(id = with(data$v_assist, unique(c(source_id, target_id)))) %>%
+      data.frame(id = with(data$v_assist, na.omit(unique(c(source_id, target_id))))) %>%
         left_join(data$v_roster, by = join_by(id == player_id), suffix = c("", ".roster")) %>%
         mutate(label = player) %>%
         rename(color.background = color)
@@ -187,8 +188,11 @@ server <- shinyServer(function(input, output, session) {
       select(team, shooter, assist1, assist2, goalie, period, time, EV, PP, SH, EN) %>%
       rhandsontable(
         stretchH = "all",
-        team_color = data$v_point$color,
-        player_color = as.list(with(data$v_roster, setNames(color, player)))
+        team_color = as.list(with(data$team, setNames(color, name))),
+        shooter_color = as.list(with(data$v_roster, setNames(color, player))),
+        assist1_color = as.list(with(data$v_roster, setNames(color, player))),
+        assist2_color = as.list(with(data$v_roster, setNames(color, player))),
+        goalie_color = as.list(with(data$v_roster, setNames(color, player)))
       ) %>%
       hot_cols(columnSorting = T) %>%
       hot_col(c("team", "shooter", "assist1", "assist2", "goalie"), renderer = renderer.color) %>%
@@ -202,8 +206,10 @@ server <- shinyServer(function(input, output, session) {
       select(team, player, server, goalie, call, duration, period, time, scored) %>%
       rhandsontable(
         stretchH = "all",
-        team_color = data$v_penalty$color,
-        player_color = as.list(with(data$v_roster, setNames(color, player)))
+        team_color = as.list(with(data$team, setNames(color, name))),
+        player_color = as.list(with(data$v_roster, setNames(color, player))),
+        server_color = as.list(with(data$v_roster, setNames(color, player))),
+        goalie_color = as.list(with(data$v_roster, setNames(color, player)))
       ) %>%
       hot_cols(columnSorting = T) %>%
       hot_col(c("team", "player", "server", "goalie"), renderer = renderer.color) %>%
@@ -218,8 +224,8 @@ server <- shinyServer(function(input, output, session) {
       select(team, goalie, SH, period) %>%
       rhandsontable(
         stretchH = "all",
-        team_color = data$v_shot$color,
-        player_color = as.list(with(data$v_roster, setNames(color, player)))
+        team_color = as.list(with(data$team, setNames(color, name))),
+        goalie_color = as.list(with(data$v_roster, setNames(color, player)))
       ) %>%
       hot_cols(columnSorting = T) %>%
       hot_col(c("team", "goalie"), renderer = renderer.color) %>%
@@ -227,73 +233,111 @@ server <- shinyServer(function(input, output, session) {
       hot_validate_numeric("period", min = 1)
   })
 
-  output$roster <- renderRHandsontable({
-    data <- match()
-    data$v_roster %>%
-      select(id, team, player, captain) %>%
-      rhandsontable(
-        stretchH = "all",
-        rowHeaders = NULL,
-        team_color = data$v_roster$color,
-        player_color = as.list(with(data$v_roster, setNames(color, player)))
-      ) %>%
-      hot_cols(columnSorting = T) %>%
-      hot_col("id", readOnly = T) %>%
-      hot_col(c("team", "player"), renderer = renderer.color)
-  })
-
   observeEvent(input$set_yss, {
     con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
 
     params <- as.integer(str_split_fixed(input$set_yss, "_", 3))
-
-    output$coordinate <- renderText({
-      glue::glue("<b>Session {params[3]} of the {names(seasons)[params[2] - min(seasons) + 1]} {params[1]} Season</b>")
-    })
-
-    v_roster <- (
+    
+    ## roster
+    
+    df.roster <- (
       DBI::dbGetQuery(
         con,
         "SELECT * FROM v_roster WHERE year == ? AND season == ? AND session == ?;",
         params = params
       ) %>%
-        mutate(
-          label = if_else(is.na(alias), player, glue::glue("{player} ({alias})")),
-          label = glue::glue("{player_id}. {label}"),
-          captain = as.logical(as.integer(captain))
-        )
+        mutate(captain = as.logical(as.integer(captain)))
     )
-
-    team <- DBI::dbGetQuery(con, "SELECT id, name FROM team WHERE year == ? AND season == ? AND session == ?", params)
-    choices.team <- with(v_roster, setNames(team_id, team))
-
-    updateSelectInput(session, "home", choices = choices.team, selected = first(choices.team))
-    updateSelectInput(session, "away", choices = choices.team, selected = last(choices.team))
-
-    rink <- (
+    
+    output$roster <- renderRHandsontable({
+      df.roster %>%
+        select(id, team, player, captain) %>%
+        rhandsontable(
+          stretchH = "all",
+          rowHeaders = NULL,
+          team_color = as.list(with(df.roster, setNames(color, team)))
+        ) %>%
+        hot_cols(columnSorting = T) %>%
+        hot_col("id", readOnly = T) %>%
+        hot_col(c("team", "player"), renderer = renderer.color)
+    })
+    
+    ## record
+    
+    df.team <- DBI::dbGetQuery(
+      con, 
+      "SELECT id, name, color FROM team WHERE year == ? AND season == ? AND session == ?", 
+      params
+    )
+    df.rink <- (
       DBI::dbReadTable(con, "rink") %>%
         select(id, name)
     )
-    choices.rink <- with(rink, setNames(id, name))
-    updateSelectInput(session, "rink", choices = choices.rink, selected = last(choices.rink))
+    
+    teams <- with(df.team, setNames(id, name))
+    rinks <- with(df.rink, setNames(id, name))
+    
+    updateSelectInput(session, "home", choices = teams, selected = first(teams))
+    updateSelectInput(session, "away", choices = teams, selected = last(teams))
+    updateSelectInput(session, "rink", choices = rinks, selected = last(rinks))
+    
+    output$coordinate <- renderText({
+      glue::glue("<b>Session {params[3]} of the {names(seasons)[params[2] - min(seasons) + 1]} {params[1]} Season</b>")
+    })
 
+    DBI::dbDisconnect(con)
+  })
+
+  observeEvent(c(input$home, input$away), {
+    req(input$home, input$away)
+    
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    
+    params <- as.integer(str_split_fixed(input$set_yss, "_", 3))
+    
+    df.roster <- (
+      DBI::dbGetQuery(
+        con,
+        "SELECT * FROM v_roster WHERE year == ? AND season == ? AND session == ?;",
+        params = params
+      ) %>%
+        mutate(captain = as.logical(as.integer(captain)))
+    )
+    df.team <- (
+      DBI::dbGetQuery(
+        con,
+        "SELECT id, name, color FROM team WHERE id == ?;", 
+        params = list(c(input$home, input$away))
+      )
+    )
+    df.foul <- DBI::dbReadTable(con, "foul")
+    
+    team.labels <- c("home", "away")
+    team.colors <- as.list(setNames(df.team$color, team.labels))
+    player.labels <- with(df.roster, glue::glue("{player_id}. {player}"))
+    
     output$record_shot <- renderRHandsontable({
       data.frame(
-        team = c("home", "away", "home", "away"),
+        team = c(team.labels, team.labels),
         goalie = "",
         SH = NA,
-        period = c(1, 2, 1, 2)
+        period = c(1, 1, 2, 2)
       ) %>%
         mutate(
-          team = factor(team, levels = c("home", "away")),
-          goalie = factor(goalie, levels = c("", v_roster$label)),
+          team = factor(team, levels = team.labels),
+          goalie = factor(goalie, levels = c("", player.labels)),
           across(c(SH, period), \(ele) as.integer(ele))
         ) %>%
-        rhandsontable(height = 750, stretchH = "all") %>%
+        rhandsontable(
+          height = 750, 
+          stretchH = "all",
+          team_color = team.colors
+        ) %>%
+        hot_col("team", renderer = renderer.color) %>%
         hot_validate_numeric("SH", min = 0) %>%
         hot_validate_numeric("period", min = 1)
     })
-
+    
     output$record_point <- renderRHandsontable({
       data.frame(
         team = "",
@@ -303,24 +347,26 @@ server <- shinyServer(function(input, output, session) {
         goalie = "",
         period = NA,
         time = "",
-        EV = F,
-        PP = F,
-        SH = F,
-        EN = F
+        EV = NA,
+        PP = NA,
+        SH = NA,
+        EN = NA
       ) %>%
         mutate(
-          across(c(goalie, assist1, assist2), \(ele) factor(ele, levels = c("", v_roster$label))),
-          team = factor(team, levels = c("home", "away")),
-          shooter = factor(shooter, levels = v_roster$label),
+          across(c(goalie, assist1, assist2), \(ele) factor(ele, levels = c("", player.labels))),
+          team = factor(team, levels = team.labels),
+          shooter = factor(shooter, levels = player.labels),
           period = as.integer(period),
         ) %>%
-        rhandsontable(stretchH = "all") %>%
+        rhandsontable(
+          stretchH = "all",
+          team_color = team.colors
+        ) %>%
+        hot_col("team", renderer = renderer.color) %>%
         hot_validate_numeric("SH", min = 0) %>%
         hot_validate_numeric("period", min = 1)
     })
-
-    df.foul <- DBI::dbReadTable(con, "foul")
-
+    
     output$record_penalty <- renderRHandsontable({
       data.frame(
         team = "",
@@ -331,35 +377,40 @@ server <- shinyServer(function(input, output, session) {
         duration = 2,
         period = NA,
         time = "",
-        scored = F
+        scored = NA
       ) %>%
         mutate(
-          across(c(player, server, goalie), \(ele) factor(ele, levels = c("", v_roster$label))),
+          across(c(player, server, goalie), \(ele) factor(ele, levels = c("", player.labels))),
           across(c(duration, period), \(ele) as.integer(ele)),
           foul = factor(foul, levels = with(df.foul, glue::glue("{id}. {call}"))),
-          team = factor(team, levels = c("home", "away")),
+          team = factor(team, levels = team.labels),
         ) %>%
-        rhandsontable(stretchH = "all") %>%
+        rhandsontable(
+          stretchH = "all",
+          team_color = team.colors
+        ) %>%
+        hot_col("team", renderer = renderer.color) %>%
         hot_validate_numeric(c("period", "duration"), min = 1)
     })
-
+    
     DBI::dbDisconnect(con)
   })
   
   observeEvent(input$submit_record, {
     conn <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
-    
+
     match_id <- (
       DBI::dbGetQuery(
         conn = conn,
         "INSERT INTO match VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;",
-        params = c(NA, input$home,input$away, input$date, input$time, input$week, input$game, input$rink, NA)
+        params = c(NA, input$home, input$away, input$date, input$time, input$week, input$game, input$rink, NA)
       )
     )
-    team_to_id <- setNames(c(1, 2), c("home", "away"))
+    
+    team_to_id <- setNames(1:2, c("home", "away"))
     
     df.shot <- hot_to_r(input$record_shot)
-    if(!is.null(df.shot)) {
+    if (!is.null(df.shot)) {
       df.shot %>%
         mutate(
           id = NA,
@@ -373,24 +424,24 @@ server <- shinyServer(function(input, output, session) {
     }
     df.point <- hot_to_r(input$record_point)
     if (!is.null(df.point)) {
-        df.point %>%
-          mutate(
-            id = NA,
-            match = match_id$id,
-            team = team_to_id[team],
-            across(all_of(c("EV", "PP", "SH", "EN")), \(ele) as.integer(ele))
-          ) %>%
-          separate(shooter, c("shooter", "shooter.name"), ". ", extra = "merge", fill = "right") %>%
-          separate(assist1, c("assist1", "assist1.name"), ". ", extra = "merge", fill = "right") %>%
-          separate(assist2, c("assist2", "assist2.name"), ". ", extra = "merge", fill = "right") %>%
-          separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
-          select(id, match, team, shooter, assist1, assist2, goalie, period, time, EV, PP, SH, EN) %>%
-          DBI::dbAppendTable(conn, "point", value = .) %>%
-          print()
+      df.point %>%
+        mutate(
+          id = NA,
+          match = match_id$id,
+          team = team_to_id[team],
+          across(all_of(c("EV", "PP", "SH", "EN")), \(ele) as.integer(ele))
+        ) %>%
+        separate(shooter, c("shooter", "shooter.name"), ". ", extra = "merge", fill = "right") %>%
+        separate(assist1, c("assist1", "assist1.name"), ". ", extra = "merge", fill = "right") %>%
+        separate(assist2, c("assist2", "assist2.name"), ". ", extra = "merge", fill = "right") %>%
+        separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
+        select(id, match, team, shooter, assist1, assist2, goalie, period, time, EV, PP, SH, EN) %>%
+        DBI::dbAppendTable(conn, "point", value = .) %>%
+        print()
     }
     df.penalty <- hot_to_r(input$record_penalty)
     if (!is.null(df.penalty)) {
-      df.penalty %>%
+      filter(df.penalty, team != "") %>%
         mutate(
           id = NA,
           match = match_id$id,
@@ -405,7 +456,7 @@ server <- shinyServer(function(input, output, session) {
         DBI::dbAppendTable(conn, "penalty", value = .) %>%
         print()
     }
-    
+
     DBI::dbDisconnect(conn)
   })
 
@@ -414,16 +465,23 @@ server <- shinyServer(function(input, output, session) {
   output$team <- renderRHandsontable({
     con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
 
-    result <- (
+    data <- (
       DBI::dbReadTable(con, "team") %>%
+        arrange(desc(year), desc(season), desc(session))
+    )
+    result <- (
+      data %>%
         rhandsontable(
           rowHeaders = NULL,
-          stretchH = "all"
+          stretchH = "all",
+          color_color = as.list(unique(data$color) %>% setNames(., .)),
         ) %>%
         hot_cols(columnSorting = T) %>%
-        hot_col("id", readOnly = T)
+        hot_col("id", readOnly = T) %>%
+        hot_col("color", renderer = renderer.color)
     )
     DBI::dbDisconnect(con)
+
     result
   })
 
@@ -439,66 +497,169 @@ server <- shinyServer(function(input, output, session) {
         hot_col("id", readOnly = T)
     )
     DBI::dbDisconnect(con)
+
     result
   })
 
   # upload roster
 
   observeEvent(input$input_roster, {
-    template <- str_squish("
-      <span class='toggle'>
-        <label>
-          <input id='fix_{id}' name='fix_{row}' type='radio' onclick='console.log(this.id);'>{label}
-        </label>
-      </span>
-    ")
-    output$temp_roster <- renderRHandsontable({
-      con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
-      df.player <- (
-        DBI::dbReadTable(con, "player") %>%
-          mutate(label = if_else(is.na(alias), name, glue::glue("{name} ({alias})")))
-      )
-      DBI::dbDisconnect(con)
-
-      data <- (
-        read_tsv(input$input_roster$datapath, col_types = cols(.default = "c")) %>%
-          pivot_longer(cols = everything(), names_to = "team", values_to = "player", values_drop_na = T) %>%
-          separate("team", c("team", "color"), ":") %>%
-          mutate(
-            color = tolower(color),
-            captain = str_detect(player, "(, ?C| ?\\(C\\))$"),
-            goalie = str_detect(player, "(, ?G| ?\\(G\\))$"),
-            player = str_remove(player, "(, ?[CG]| ?\\([CG]\\))$")
-          ) %>%
-          left_join(df.player, by = join_by(player == label)) %>%
-          rownames_to_column("row") %>%
-          select(-name) %>%
-          arrange(color, player)
-      )
-      left_join(
-        data,
-        filter(data, is.na(id)) %>%
-          mutate(
-            create = glue::glue(template, id = 0, row = row, label = ""),
-            choose = (
-              apply(., 1, function(ele) {
-                agrep(ele[["player"]], df.player$name, max.distance = list(all = 5), ignore.case = T) %>%
-                  head(3) %>%
-                  df.player[., ] %>%
-                  with(glue::glue(template)) %>%
-                  str_c(collapse = "")
-              })
-            )
-          ) %>%
-          select(player, create, choose),
-        by = join_by(player)
-      ) %>%
-        rhandsontable(
-          allowedTags = "<span><label><input>",
-          stretchH = "all"
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    df.player <- DBI::dbReadTable(con, "player")
+    DBI::dbDisconnect(con)
+    data <- (
+      read_tsv(input$input_roster$datapath, col_types = cols(.default = "c")) %>%
+        pivot_longer(cols = everything(), names_to = "team", values_to = "player", values_drop_na = T) %>%
+        separate("team", c("color", "team"), ":") %>%
+        mutate(
+          color = tolower(color),
+          captain = str_detect(player, "(, ?C| ?\\(C\\))$"),
+          goalie = str_detect(player, "(, ?G| ?\\(G\\))$"),
+          player = str_remove(player, "(, ?[CG]| ?\\([CG]\\))$")
         ) %>%
-        hot_col(c("create", "choose"), renderer = htmlwidgets::JS("safeHtmlRenderer"))
+        arrange(color, player) %>%
+        left_join(select(df.player, id, name), by = join_by(player == name))
+    )
+    output$upload_team <- renderRHandsontable({
+      distinct(data, color, team) %>%
+        rhandsontable(
+          stretchH = "all",
+          color_color = as.list(with(data, setNames(color, color)))
+        ) %>%
+        hot_col("color", renderer = renderer.color)
     })
+    output$upload_roster <- renderRHandsontable({
+      rhandsontable(
+        data,
+        stretchH = "all",
+        color_color = as.list(with(data, setNames(color, color)))
+      ) %>%
+        hot_col("color", readOnly = T, renderer = renderer.color) %>%
+        hot_col("team", readOnly = T) %>%
+        hot_col("player", type = "dropdown", source = df.player$name, strict = F, allowInvalid = T)
+    })
+    outputOptions(output, "upload_team", suspendWhenHidden = F)
+    outputOptions(output, "upload_roster", suspendWhenHidden = F)
+  })
+
+  observeEvent(input$upload_team$changes$changes, {
+    coor <- input$upload_team$changes$changes[[1]]
+    req(coor[[3]] != coor[[4]])
+    data_team <- hot_to_r(input$upload_team)
+    data_roster <- hot_to_r(input$upload_roster)
+    key <- names(data_team)[coor[[2]] + 1]
+    data_roster[[key]] <- if_else(data_roster[[key]] == coor[[3]], coor[[4]], data_roster[[key]])
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    df.player <- DBI::dbReadTable(con, "player")
+    DBI::dbDisconnect(con)
+    output$upload_team <- renderRHandsontable({
+      rhandsontable(
+        data_team,
+        stretchH = "all",
+        color_color = as.list(with(data_team, setNames(color, color)))
+      ) %>%
+        hot_col("color", renderer = renderer.color)
+    })
+    output$upload_roster <- renderRHandsontable({
+      rhandsontable(
+        data_roster,
+        stretchH = "all",
+        color_color = as.list(with(data_team, setNames(color, color)))
+      ) %>%
+        hot_col("color", readOnly = T, renderer = renderer.color) %>%
+        hot_col("team", readOnly = T) %>%
+        hot_col("player", type = "dropdown", source = df.player$name, strict = F, allowInvalid = T)
+    })
+  })
+
+  observeEvent(input$upload_roster$changes$changes, {
+    print(input$upload_roster$changes$changes)
+    coor <- input$upload_roster$changes$changes[[1]]
+    req(coor[[3]] != coor[[4]])
+    data_roster <- hot_to_r(input$upload_roster)
+    key <- names(data_roster)[coor[[2]] + 1]
+    req(key == "player")
+    con <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    df.player <- DBI::dbReadTable(con, "player")
+    result <- DBI::dbGetQuery(con, "SELECT id FROM player WHERE name == ?;", params = coor[[4]])
+    DBI::dbDisconnect(con)
+    data_roster[coor[[1]] + 1, "id"] <- ifelse(nrow(result) > 0, result$id, NA_integer_)
+    output$upload_roster <- renderRHandsontable({
+      rhandsontable(
+        data_roster,
+        stretchH = "all",
+        color_color = as.list(with(distinct(data_roster, color), setNames(color, color)))
+      ) %>%
+        hot_col("color", readOnly = T, renderer = renderer.color) %>%
+        hot_col("team", readOnly = T) %>%
+        hot_col("player", type = "dropdown", source = df.player$name, strict = F, allowInvalid = T)
+    })
+  })
+
+  observeEvent(input$submit_roster, {
+    conn <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
+    
+    data_team <- hot_to_r(input$upload_team)
+    data_roster <- hot_to_r(input$upload_roster)
+    
+    df.team <- (
+      data_team %>%
+        rename(name = team) %>%
+        mutate(id = NA) %>%
+        mutate(id, year = input$input_year, season = input$input_season, session = input$input_session)
+    )
+    df.team <- bind_cols(
+      DBI::dbGetQuery(
+        conn = conn,
+        glue::glue_sql("INSERT INTO team VALUES (:id, :year, :season, :session, :name, :color) RETURNING id;", .con = con),
+        params = df.team
+      ),
+      select(df.team, -id)
+    )
+    print(df.team)
+    
+    df.player <- (
+      data_roster %>%
+        filter(is.na(id)) %>%
+        mutate(id = NA) %>%
+        rename(name = player) %>%
+        select(id, name)
+    )
+    df.player <- bind_cols(
+      DBI::dbGetQuery(
+        conn = conn,
+        glue::glue_sql("INSERT INTO player VALUES (:id, :name) RETURNING id;", .con = con),
+        params = df.player
+      ),
+      select(df.player, -id)
+    )
+    print(df.player)
+    
+    ls.team <- with(df.team, setNames(id, name))
+    ls.player <- with(df.player, setNames(id, name))
+    
+    df.roster <- (
+      data_roster %>%
+        mutate(
+          team.id = ls.team[team],
+          player.id = coalesce(id, ls.player[player]),
+          captain = as.integer(captain)
+        ) %>%
+        select(team.id, player.id, captain) %>%
+        rename(team = team.id, player = player.id) %>%
+        mutate(id = NA)
+    )
+    df.roster <- bind_cols(
+      DBI::dbGetQuery(
+        conn = conn,
+        glue::glue_sql("INSERT INTO roster VALUES (:id, :team, :player, :captain) RETURNING id;", .con = con),
+        params = df.roster
+      ),
+      select(df.roster, -id)
+    )
+    print(df.roster)
+    
+    DBI::dbDisconnect(conn)
   })
 
   # CRUD
