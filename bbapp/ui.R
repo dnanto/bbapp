@@ -1,5 +1,5 @@
-ui <- shinyUI(
-  ui = htmltools::tagList(
+ui <- (
+  htmltools::tagList(
     shinyjs::useShinyjs(),
     tags$style("
       .toggle {
@@ -35,7 +35,7 @@ ui <- shinyUI(
               ),
               tabPanel(
                 "⓶ game",
-                HTML("<b>(week, game)</b>"),
+                HTML("<b>(week, game) → match</b>"),
                 div(style = "overflow-x: scroll", tableOutput("wg")),
                 value = "tabWG"
               )
@@ -43,12 +43,14 @@ ui <- shinyUI(
             width = 3
           ),
           mainPanel(
+            htmlOutput("coordinate"),
+            tags$hr(),
             tabsetPanel(
               id = "tabMatchPanels",
               tabPanel(
                 "match",
                 tags$br(),
-                htmlOutput("matchup"),
+                wellPanel(htmlOutput("matchup")),
                 tags$hr(),
                 visNetworkOutput("assist"),
                 tags$hr(),
@@ -56,7 +58,7 @@ ui <- shinyUI(
                   tabPanel("point", rHandsontableOutput("point", height = 750)),
                   tabPanel("penalty", rHandsontableOutput("penalty", height = 750)),
                   tabPanel("shot", rHandsontableOutput("shot", height = 750)),
-                  tabPanel("note"),
+                  tabPanel("meta", rHandsontableOutput("meta", height = 750)),
                   type = "pills"
                 ),
               ),
@@ -64,15 +66,13 @@ ui <- shinyUI(
               tabPanel(
                 "record",
                 sidebarPanel(
-                  htmlOutput("coordinate"),
-                  tags$hr(),
                   selectInput("home", "home", choices = NULL),
                   selectInput("away", "away", choices = NULL),
                   dateInput("date", "date", value = as.Date(now())),
                   textInput("time", "time"),
                   numericInput("week", "week", value = 1, min = 1),
                   numericInput("game", "game", value = 1, min = 1),
-                  selectInput("rink", "rink", choices = NULL),
+                  selectInput("rink", "rink", choices = rinks, last(rinks)),
                   tags$hr(),
                   actionButton("submit_record", "Submit", width = "100%"),
                   width = 4

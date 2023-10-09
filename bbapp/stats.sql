@@ -4,6 +4,7 @@
 -- Project:       bbapp
 
 -- Schema: stats
+
 ATTACH "stats.sdb" AS "stats";
 BEGIN;
 CREATE TABLE "stats"."player"(
@@ -20,7 +21,9 @@ CREATE TABLE "stats"."team"(
   "name" TEXT NOT NULL,
   "color" TEXT NOT NULL,
   CONSTRAINT "uq_team_idx"
-    UNIQUE("year","season","session","name")
+    UNIQUE("year","season","session","name"),
+  CONSTRAINT "uq_color_idx"
+    UNIQUE("year","season","session","color")
 );
 CREATE TABLE "stats"."roster"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -112,10 +115,10 @@ CREATE TABLE "stats"."point"(
   "goalie" INTEGER,
   "period" INTEGER,
   "time" TEXT,
-  "EV" INTEGER DEFAULT 0,
-  "PP" INTEGER DEFAULT 0,
-  "SH" INTEGER DEFAULT 0,
-  "EN" INTEGER DEFAULT 0,
+  "EV" INTEGER NOT NULL DEFAULT 0,
+  "PP" INTEGER NOT NULL DEFAULT 0,
+  "SH" INTEGER NOT NULL DEFAULT 0,
+  "EN" INTEGER NOT NULL DEFAULT 0,
   CONSTRAINT "fk_point_match"
     FOREIGN KEY("match")
     REFERENCES "match"("id")
@@ -215,8 +218,9 @@ END;
 CREATE VIEW "stats"."v_point" AS
 SELECT
   point.id,
-  team.year, team.season, team.session, match.game, match.week,
-  team.name AS team, team.color,
+  team.year, team.season, team.session,
+  match.id AS match, match.game, match.week,
+  team.id AS team_id, team.name AS team, team.color,
   player1.name AS shooter, player2.name AS assist1, player3.name AS assist2, player4.name AS goalie,
   period, point.time, EV, PP, SH, EN
 FROM point
@@ -231,10 +235,11 @@ LEFT JOIN player AS player4 ON goalie == player4.id
 CREATE VIEW "stats"."v_penalty" AS
 SELECT
   penalty.id,
-  team.year, team.season, team.session, match.game, match.week,
-  team.name AS team, team.color,
+  team.year, team.season, team.session,
+  match.id AS match, match.game, match.week,
+  team.id AS team_id, team.name AS team, team.color,
   player1.name AS player, player2.name AS server, player3.name AS goalie,
-  foul.call,
+  foul.id AS foul_id, foul.call,
   duration, period, penalty.time, scored
 FROM penalty
 LEFT JOIN match ON match == match.id
@@ -248,8 +253,9 @@ LEFT JOIN foul ON foul == foul.id
 CREATE VIEW "stats"."v_shot" AS
 SELECT
   shot.id,
-  team.year, team.season, team.session, match.game, match.week,
-  team.name AS team, team.color,
+  team.year, team.season, team.session,
+  match.id AS match, match.game, match.week,
+  team.id AS team_id, team.name AS team, team.color,
   player.name AS goalie,
   SH, period
 FROM shot
@@ -260,9 +266,10 @@ LEFT JOIN player ON goalie == player.id
 
 CREATE VIEW "stats"."v_roster" AS
 SELECT 
-  roster.id, roster.team AS team_id, roster.player AS player_id, roster.captain,
-  team.year, team.season, team.session, team.name AS team, team.color, 
-  player.name AS player FROM roster
+  roster.id, roster.team AS team_id, roster.player AS player_id,
+  team.id AS team_id, team.year, team.season, team.session, team.name AS team, team.color, 
+  player.name AS player, roster.captain
+FROM roster
 LEFT JOIN team ON team == team.id
 LEFT JOIN player ON player == player.id
 ;
@@ -272,8 +279,8 @@ SELECT
   ROW_NUMBER() OVER() AS assist_id, 
   point.id AS point_id,
   team.year, team.season, team.session,
-  match.week, match.game,
-  team.name AS team, team.color,
+  match.id AS match, match.game, match.week,
+  team.id AS team_id, team.name AS team, team.color,
   player_1.id AS source_id, player_2.id AS target_id,
   player_1.name AS source, player_2.name AS target, 
   "type"
@@ -290,14 +297,14 @@ LEFT JOIN team ON IIF(team_id == 1, team1, team2) == team.id
 
 CREATE VIEW "stats"."v_matchup" AS
 SELECT 
-  team.year, team.season, team.session, x.week, x.game, 
+  team.year, team.season, team.session, x.date, x.time, x.week, x.game, 
   x.match_id, x.team_id, team.name AS team, team.color, rink.name AS rink, 
   COALESCE(score, 0) AS score
 FROM
 (
-  SELECT id AS match_id, week, game, team1 AS team_id, rink AS rink_id FROM match 
+  SELECT id AS match_id, date, time, week, game, team1 AS team_id, rink AS rink_id FROM match 
   UNION
-  SELECT id, week, game, team2, rink FROM match
+  SELECT id, date, time, week, game, team2, rink FROM match
 ) AS x
 LEFT JOIN
 (
