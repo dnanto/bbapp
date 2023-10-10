@@ -13,18 +13,41 @@ CREATE TABLE "stats"."player"(
   CONSTRAINT "uq_player_idx"
     UNIQUE("name")
 );
-CREATE TABLE "stats"."team"(
+CREATE TABLE "stats"."foul"(
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "call" TEXT NOT NULL,
+  CONSTRAINT "uq_foul_idx"
+    UNIQUE("call")
+);
+CREATE TABLE "stats"."rink"(
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "name" TEXT NOT NULL,
+  "address" TEXT NOT NULL,
+  CONSTRAINT "uq_rink_idx"
+    UNIQUE("name")
+);
+CREATE TABLE "stats"."season"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "year" INTEGER NOT NULL,
   "season" INTEGER NOT NULL,
   "session" INTEGER NOT NULL,
+  CONSTRAINT "uq_season_idx"
+    UNIQUE("year","season","session")
+);
+CREATE TABLE "stats"."team"(
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "season" INTEGER NOT NULL,
   "name" TEXT NOT NULL,
   "color" TEXT NOT NULL,
-  CONSTRAINT "uq_team_idx"
-    UNIQUE("year","season","session","name"),
-  CONSTRAINT "uq_color_idx"
-    UNIQUE("year","season","session","color")
+  CONSTRAINT "uq_team_name_idx"
+    UNIQUE("season","name"),
+  CONSTRAINT "uq_team_color_idx"
+    UNIQUE("season","color"),
+  CONSTRAINT "fk_team_season1"
+    FOREIGN KEY("season")
+    REFERENCES "season"("id")
 );
+CREATE INDEX "stats"."team.fk_team_season_idx" ON "team" ("season");
 CREATE TABLE "stats"."roster"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "team" INTEGER NOT NULL,
@@ -43,67 +66,37 @@ CREATE TABLE "stats"."roster"(
 );
 CREATE INDEX "stats"."roster.fk_roster_team_idx" ON "roster" ("team");
 CREATE INDEX "stats"."roster.fk_roster_player_idx" ON "roster" ("player");
-CREATE TABLE "stats"."foul"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  "call" TEXT NOT NULL,
-  CONSTRAINT "uq_foul_idx"
-    UNIQUE("call")
-);
-CREATE TABLE "stats"."rink"(
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  "name" TEXT NOT NULL,
-  "address" TEXT NOT NULL,
-  CONSTRAINT "uq_rink_idx"
-    UNIQUE("name")
-);
-CREATE TABLE "stats"."legacy"(
-  "roster" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  "G" INTEGER NOT NULL DEFAULT 0,
-  "A" INTEGER NOT NULL DEFAULT 0,
-  "PIM" INTEGER NOT NULL DEFAULT 0,
-  "PPG" INTEGER NOT NULL DEFAULT 0,
-  "PPA" INTEGER NOT NULL DEFAULT 0,
-  "SHG" INTEGER NOT NULL DEFAULT 0,
-  "SHA" INTEGER NOT NULL DEFAULT 0,
-  "GWG" INTEGER NOT NULL DEFAULT 0,
-  "W" INTEGER NOT NULL DEFAULT 0,
-  "L" INTEGER NOT NULL DEFAULT 0,
-  "OTL" INTEGER NOT NULL DEFAULT 0,
-  "SH" INTEGER NOT NULL DEFAULT 0,
-  "GA" INTEGER NOT NULL DEFAULT 0,
-  "SHO" INTEGER NOT NULL DEFAULT 0,
-  CONSTRAINT "fk_legacy_roster"
-    FOREIGN KEY("roster")
-    REFERENCES "roster"("id")
-    ON DELETE CASCADE
-);
 CREATE TABLE "stats"."match"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  "team1" INTEGER NOT NULL,
-  "team2" INTEGER NOT NULL,
-  "date" TEXT,
-  "time" TEXT,
+  "season" INTEGER NOT NULL,
+  "home" INTEGER NOT NULL,
+  "away" INTEGER NOT NULL,
+  "rink" INTEGER,
   "week" INTEGER NOT NULL,
   "game" INTEGER NOT NULL,
-  "rink" INTEGER,
+  "date" TEXT,
+  "time" TEXT,
   "meta" TEXT,
   CONSTRAINT "uq_match_idx"
-    UNIQUE("team1","team2","week","game"),
+    UNIQUE("season","week","game"),
   CONSTRAINT "fk_match_team1"
-    FOREIGN KEY("team1")
+    FOREIGN KEY("home")
     REFERENCES "team"("id")
     ON DELETE CASCADE,
   CONSTRAINT "fk_match_team2"
-    FOREIGN KEY("team2")
+    FOREIGN KEY("away")
     REFERENCES "team"("id")
     ON DELETE CASCADE,
-  CONSTRAINT "fk_match_rink"
+  CONSTRAINT "fk_match_season1"
+    FOREIGN KEY("season")
+    REFERENCES "season"("id"),
+  CONSTRAINT "fk_match_rink1"
     FOREIGN KEY("rink")
     REFERENCES "rink"("id")
-    ON DELETE CASCADE
 );
-CREATE INDEX "stats"."match.fk_match_team1_idx" ON "match" ("team1");
-CREATE INDEX "stats"."match.fk_match_team2_idx" ON "match" ("team2");
+CREATE INDEX "stats"."match.fk_match_home_idx" ON "match" ("home");
+CREATE INDEX "stats"."match.fk_match_away_idx" ON "match" ("away");
+CREATE INDEX "stats"."match.fk_match_season_idx" ON "match" ("season");
 CREATE INDEX "stats"."match.fk_match_rink_idx" ON "match" ("rink");
 CREATE TABLE "stats"."point"(
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -201,84 +194,92 @@ CREATE TABLE "stats"."shot"(
 );
 CREATE INDEX "stats"."shot.fk_shot_match_idx" ON "shot" ("match");
 CREATE INDEX "stats"."shot.fk_shot_player_idx" ON "shot" ("goalie");
+CREATE TABLE "stats"."legacy"(
+  "roster" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "G" INTEGER NOT NULL DEFAULT 0,
+  "A" INTEGER NOT NULL DEFAULT 0,
+  "PIM" INTEGER NOT NULL DEFAULT 0,
+  "PPG" INTEGER NOT NULL DEFAULT 0,
+  "PPA" INTEGER NOT NULL DEFAULT 0,
+  "SHG" INTEGER NOT NULL DEFAULT 0,
+  "SHA" INTEGER NOT NULL DEFAULT 0,
+  "GWG" INTEGER NOT NULL DEFAULT 0,
+  "W" INTEGER NOT NULL DEFAULT 0,
+  "L" INTEGER NOT NULL DEFAULT 0,
+  "OTL" INTEGER NOT NULL DEFAULT 0,
+  "SH" INTEGER NOT NULL DEFAULT 0,
+  "GA" INTEGER NOT NULL DEFAULT 0,
+  "SHO" INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT "fk_legacy_roster"
+    FOREIGN KEY("roster")
+    REFERENCES "roster"("id")
+    ON DELETE CASCADE
+);
 
--- triggers 
+-- triggers
 
 CREATE TRIGGER "stats"."match_team_check"
 BEFORE INSERT ON match
+WHEN (NEW.home == NEW.away)
+BEGIN
+    SELECT RAISE(FAIL, "the teams for this match are not different!");
+END;
+
+CREATE TRIGGER "stats"."match_season_check"
+BEFORE INSERT ON match
 WHEN (
-  SELECT year, season, session FROM team WHERE name == NEW.team1) != (SELECT year, season, session FROM team WHERE name == NEW.team2
+  (SELECT season FROM team WHERE name == NEW.home) != (SELECT season FROM team WHERE name == NEW.away)
 )
 BEGIN
-    SELECT RAISE(FAIL, "the teams for this match are not of the same year, season, & session");
+    SELECT RAISE(FAIL, "the teams for this match are not of the same season!");
 END;
 
 -- views
 
-CREATE VIEW "stats"."v_point" AS
-SELECT
-  point.id,
-  team.year, team.season, team.session,
-  match.id AS match, match.game, match.week,
-  team.id AS team_id, team.name AS team, team.color,
-  player1.name AS shooter, player2.name AS assist1, player3.name AS assist2, player4.name AS goalie,
-  period, point.time, EV, PP, SH, EN
-FROM point
-LEFT JOIN match ON match == match.id
-LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
-LEFT JOIN player AS player1 ON shooter == player1.id
-LEFT JOIN player AS player2 ON assist1 == player2.id
-LEFT JOIN player AS player3 ON assist2 == player3.id
-LEFT JOIN player AS player4 ON goalie == player4.id
-;
-
-CREATE VIEW "stats"."v_penalty" AS
-SELECT
-  penalty.id,
-  team.year, team.season, team.session,
-  match.id AS match, match.game, match.week,
-  team.id AS team_id, team.name AS team, team.color,
-  player1.name AS player, player2.name AS server, player3.name AS goalie,
-  foul.id AS foul_id, foul.call,
-  duration, period, penalty.time, scored
-FROM penalty
-LEFT JOIN match ON match == match.id
-LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
-LEFT JOIN player AS player1 ON player == player1.id
-LEFT JOIN player AS player2 ON server == player2.id
-LEFT JOIN player AS player3 ON goalie == player3.id
-LEFT JOIN foul ON foul == foul.id
-;
-
-CREATE VIEW "stats"."v_shot" AS
-SELECT
-  shot.id,
-  team.year, team.season, team.session,
-  match.id AS match, match.game, match.week,
-  team.id AS team_id, team.name AS team, team.color,
-  player.name AS goalie,
-  SH, period
-FROM shot
-LEFT JOIN match ON match == match.id
-LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
-LEFT JOIN player ON goalie == player.id
+CREATE VIEW "stats"."v_matchup" AS
+SELECT 
+  x.match_id,
+  season.id AS season_id, season.year, season.season, season.session,
+  x.week, x.game,
+  x.team_id, team.name AS team, team.color,
+  x.rink_id, rink.name AS rink,
+  COALESCE(score, 0) AS score FROM
+(
+  SELECT id AS match_id, home AS team_id, rink AS rink_id, * FROM match
+  UNION
+  SELECT id AS match_id, away AS team_id, rink AS rink_id, * FROM match
+) AS x
+LEFT JOIN
+(
+  SELECT match.id AS match_id, team.id AS team_id, COUNT(*) AS score FROM point
+  LEFT JOIN match ON match = match.id
+  LEFT JOIN team ON IIF(team == 1, home, away) == team.id
+  GROUP BY match_id, team_id
+) AS y
+ON x.match_id == y.match_id AND x.team_id == y.team_id
+LEFT JOIN team ON x.team_id = team.id
+LEFT JOIN rink ON x.rink_id = rink.id
+LEFT JOIN season ON x.season == season.id
 ;
 
 CREATE VIEW "stats"."v_roster" AS
 SELECT 
-  roster.id, roster.team AS team_id, roster.player AS player_id,
-  team.id AS team_id, team.year, team.season, team.session, team.name AS team, team.color, 
+  roster.id,
+  roster.team AS team_id, roster.player AS player_id,
+  season.id AS season_id, season.year, season.season, season.session,
+  team.name AS team, team.color, 
   player.name AS player, roster.captain
 FROM roster
 LEFT JOIN team ON team == team.id
 LEFT JOIN player ON player == player.id
+LEFT JOIN season ON team.season == season.id
 ;
 
 CREATE VIEW "stats"."v_assist" AS
 SELECT 
   ROW_NUMBER() OVER() AS assist_id, 
   point.id AS point_id,
-  team.year, team.season, team.session,
+  season.id AS season_id, season.year, season.season, season.session,
   match.id AS match, match.game, match.week,
   team.id AS team_id, team.name AS team, team.color,
   player_1.id AS source_id, player_2.id AS target_id,
@@ -292,30 +293,60 @@ FROM (
 LEFT JOIN player AS player_1 ON player_1_id == player_1.id
 LEFT JOIN player AS player_2 ON player_2_id == player_2.id
 LEFT JOIN match ON match == match.id
-LEFT JOIN team ON IIF(team_id == 1, team1, team2) == team.id
+LEFT JOIN team ON IIF(team_id == 1, home, away) == team.id
+LEFT JOIN season ON match.season == season.id
 ;
 
-CREATE VIEW "stats"."v_matchup" AS
-SELECT 
-  team.year, team.season, team.session, x.date, x.time, x.week, x.game, 
-  x.match_id, x.team_id, team.name AS team, team.color, rink.name AS rink, 
-  COALESCE(score, 0) AS score
-FROM
-(
-  SELECT id AS match_id, date, time, week, game, team1 AS team_id, rink AS rink_id FROM match 
-  UNION
-  SELECT id, date, time, week, game, team2, rink FROM match
-) AS x
-LEFT JOIN
-(
-  SELECT match.id AS match_id, team.id AS team_id, COUNT(*) AS score FROM point
-  LEFT JOIN match ON match = match.id
-  LEFT JOIN team ON IIF(team == 1, team1, team2) == team.id
-  GROUP BY match_id, team_id
-) AS y
-ON x.match_id == y.match_id AND x.team_id == y.team_id
-LEFT JOIN team ON x.team_id = team.id
-LEFT JOIN rink ON x.rink_id = rink.id
+CREATE VIEW "stats"."v_point" AS
+SELECT
+  point.id,
+  season.id AS season_id, season.year, season.season, season.session,
+  match.id AS match, match.game, match.week,
+  team.id AS team_id, team.name AS team, team.color,
+  player1.name AS shooter, player2.name AS assist1, player3.name AS assist2, player4.name AS goalie,
+  period, point.time, EV, PP, SH, EN
+FROM point
+LEFT JOIN match ON match == match.id
+LEFT JOIN team ON IIF(team == 1, home, away) == team.id
+LEFT JOIN season ON match.season == season.id
+LEFT JOIN player AS player1 ON shooter == player1.id
+LEFT JOIN player AS player2 ON assist1 == player2.id
+LEFT JOIN player AS player3 ON assist2 == player3.id
+LEFT JOIN player AS player4 ON goalie == player4.id
+;
+
+CREATE VIEW "stats"."v_penalty" AS
+SELECT
+  penalty.id,
+  season.id AS season_id, season.year, season.season, season.session,
+  match.id AS match, match.game, match.week,
+  team.id AS team_id, team.name AS team, team.color,
+  player1.name AS player, player2.name AS server, player3.name AS goalie,
+  foul.id AS foul_id, foul.call,
+  duration, period, penalty.time, scored
+FROM penalty
+LEFT JOIN match ON match == match.id
+LEFT JOIN team ON IIF(team == 1, home, away) == team.id
+LEFT JOIN season ON match.season == season.id
+LEFT JOIN player AS player1 ON player == player1.id
+LEFT JOIN player AS player2 ON server == player2.id
+LEFT JOIN player AS player3 ON goalie == player3.id
+LEFT JOIN foul ON foul == foul.id
+;
+
+CREATE VIEW "stats"."v_shot" AS
+SELECT
+  shot.id,
+  season.id AS season_id, season.year, season.season, season.session,
+  match.id AS match, match.game, match.week,
+  team.id AS team_id, team.name AS team, team.color,
+  player.name AS goalie,
+  SH, period
+FROM shot
+LEFT JOIN match ON match == match.id
+LEFT JOIN team ON IIF(team == 1, home, away) == team.id
+LEFT JOIN season ON match.season == season.id
+LEFT JOIN player ON goalie == player.id
 ;
 
 COMMIT;

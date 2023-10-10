@@ -1,6 +1,6 @@
 server <- function(input, output, session) {
   # match
-
+  
   output$yss <- function() {
     template <- str_squish("
       <span class='toggle'>
@@ -10,8 +10,7 @@ server <- function(input, output, session) {
       </span>
     ")
     data <- (
-      tbl(pool, "team") %>%
-        distinct(year, season, session) %>%
+      tbl(pool, "season") %>%
         as_tibble() %>%
         mutate(
           label = names(seasons)[season - min(seasons) + 1],
@@ -33,7 +32,6 @@ server <- function(input, output, session) {
   }
 
   output$wg <- function() {
-    req(input$set_yss)
     template <- str_squish("
       <span class='toggle'>
         <label>
@@ -41,13 +39,18 @@ server <- function(input, output, session) {
         </label>
       </span>
     ")
+    params <- tail(unlist(strsplit(input$set_yss, "_")), -1)
+    season_id <- (
+      tbl(pool, "season") %>%
+        filter(year == !!params[1], season == !!params[2], session == !!params[3]) %>%
+        pull(season)
+    )
     data <- (
-      pool::dbGetQuery(
-        pool,
-        "SELECT DISTINCT week, game FROM v_matchup WHERE year == ? AND season == ? AND session == ?;",
-        params = tail(unlist(strsplit(input$set_yss, "_")), -1)
-      ) %>%
+      tbl(pool, "match") %>%
+        filter(season == !!season_id) %>%
+        select(week, game) %>%
         arrange(desc(week)) %>%
+        as_tibble() %>%
         mutate(
           checked = if_else(week == 1 & game == 1, "checked", ""),
           value = glue::glue(template)
@@ -72,13 +75,12 @@ server <- function(input, output, session) {
       updateTabsetPanel(session, "tabMatch", selected = "tabYSS")
     }
   })
-  
+
   output$coordinate <- renderText({
     req(input$set_yss)
-    print(tail(unlist(strsplit(input$set_yss, "_")), -1))
     glue::glue(
       "<b>Session {params[3]} of the {names(seasons)[params[2] - min(seasons) + 1]} {params[1]} Season</b>",
-      params=as.integer(tail(unlist(strsplit(input$set_yss, "_")), -1))
+      params = as.integer(tail(unlist(strsplit(input$set_yss, "_")), -1))
     )
   })
 
@@ -117,23 +119,25 @@ server <- function(input, output, session) {
     team_labels <- setNames(c("home", "away"), data$team)
     team_color <- as.list(setNames(data$color, unname(team_labels)))
     roster_color <- as.list(with(df.roster, setNames(color, player_labels)))
-    
+
     ### matchup
-    
+
     output$matchup <- renderText({
       with(
         data,
         str_c(
           str_glue(
             "<span style='border: 4px dotted {color[1]};'>{team[1]}</span> vs. <span style='border: 4px dotted {color[2]}'>{team[2]}</span>"
-          ), 
-          if (is.na(rink[1])) c() else rink[1], sep = " @ ") %>% str_c(str_glue("{score[1]} - {score[2]}"), sep = ": ")
+          ),
+          if (is.na(rink[1])) c() else rink[1],
+          sep = " @ "
+        ) %>% str_c(str_glue("{score[1]} - {score[2]}"), sep = ": ")
       ) %>%
         str_c("<b>", ., ".</b>", sep = "")
     })
-    
+
     ### assist
-    
+
     output$assist <- renderVisNetwork({
       df.assist <- (
         tbl(pool, "v_assist") %>%
@@ -166,9 +170,9 @@ server <- function(input, output, session) {
           color = list(border = "black")
         )
     })
-    
+
     ### point
-  
+
     output$point <- renderRHandsontable({
       tbl(pool, "v_point") %>%
         filter(match == match_id) %>%
@@ -195,9 +199,9 @@ server <- function(input, output, session) {
         hot_col("time", validator = validator.time.stat) %>%
         hot_validate_numeric("period", min = 1)
     })
-  
+
     ### penalty
-  
+
     output$penalty <- renderRHandsontable({
       df.foul <- as_tibble(tbl(pool, "foul"))
       fouls <- with(df.foul, setNames(str_c(id, ". ", call), call))
@@ -206,7 +210,7 @@ server <- function(input, output, session) {
         as_tibble() %>%
         mutate(
           across(
-            c(player, server, goalie), 
+            c(player, server, goalie),
             \(ele) factor(str_c(player_id[ele], ". ", ele), levels = c("", player_labels))
           ),
           team = factor(team_labels[team], levels = unname(team_labels)),
@@ -227,16 +231,16 @@ server <- function(input, output, session) {
         hot_validate_numeric("duration", min = 0) %>%
         hot_validate_numeric("period", min = 1)
     })
-  
+
     ### shot
-  
+
     output$shot <- renderRHandsontable({
       tbl(pool, "v_shot") %>%
         filter(match == match_id) %>%
         as_tibble() %>%
         mutate(
           goalie = factor(
-            str_c(player_id[goalie], ". ", goalie), 
+            str_c(player_id[goalie], ". ", goalie),
             levels = c("", player_labels)
           ),
           team = factor(team_labels[team], levels = unname(team_labels))
@@ -253,22 +257,21 @@ server <- function(input, output, session) {
         hot_validate_numeric("SH", min = 0) %>%
         hot_validate_numeric("period", min = 1)
     })
-    
+
     ### meta
-    
+
     output$meta <- renderRHandsontable({
       df.team <- distinct(df.roster, team_id, team, color)
       team_labels <- with(df.team, glue::glue("{team_id}. {team}"))
       team_color <- as.list(setNames(df.team$color, team_labels))
-      print(team_color)
       tbl(pool, "match") %>%
         filter(id == match_id) %>%
-        left_join(select(tbl(pool, "team"), id, name, color), by = join_by(team1 == id)) %>%
-        left_join(select(tbl(pool, "team"), id, name, color), by = join_by(team2 == id), suffix = c(".home", ".away")) %>%
+        left_join(select(tbl(pool, "team"), id, name, color), by = join_by(home == id)) %>%
+        left_join(select(tbl(pool, "team"), id, name, color), by = join_by(away == id), suffix = c(".home", ".away")) %>%
         as_tibble() %>%
         mutate(
-          home = factor(str_c(team1, ". ", name.home), levels = team_labels),
-          away = factor(str_c(team2, ". ", name.away), levels = team_labels)
+          home = factor(str_c(home, ". ", name.home), levels = team_labels),
+          away = factor(str_c(away, ". ", name.away), levels = team_labels)
         ) %>%
         select(home, away, date, time, week, game, rink, meta) %>%
         rhandsontable(
@@ -317,7 +320,7 @@ server <- function(input, output, session) {
 
     df.roster <- roster()
     df.team <- (
-      DBI::dbGetQuery(
+      pool::dbGetQuery(
         pool,
         "SELECT id, name, color FROM team WHERE id == ?;",
         params = list(c(input$home, input$away))
@@ -395,69 +398,93 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$submit_record, {
-    conn <- DBI::dbConnect(RSQLite::SQLite(), "stats.sdb")
-    
-    match_id <- (
-      DBI::dbGetQuery(
-        conn = conn,
-        "INSERT INTO match VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;",
-        params = c(NA, input$home, input$away, input$date, input$time, input$week, input$game, input$rink, NA)
-      )
+    tryCatch(
+      pool::poolWithTransaction(pool, function(conn) {
+        print(c(NA, input$home, input$away, input$date, input$time, input$week, input$game, input$rink, NA))
+        match_id <- (
+          pool::dbGetQuery(
+            conn = conn,
+            "INSERT INTO match VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;",
+            params = c(NA, input$home, input$away, input$date, input$time, input$week, input$game, input$rink, NA)
+          )
+        )
+        print(match_id)
+        team_to_id <- setNames(1:2, c("home", "away"))
+
+        print("point")
+        df.point <- hot_to_r(input$record_point)
+        n <- 0
+        if (!is.null(df.point)) {
+          n <- (
+            df.point %>%
+              mutate(
+                across(all_of(c("assist1", "assist2", "goalie")), \(ele) na_if(ele, "")),
+                across(all_of(c("EV", "PP", "SH", "EN")), \(ele) as.integer(ele)),
+                id = NA,
+                match = match_id$id,
+                team = team_to_id[team]
+              ) %>%
+              filter(!is.na(team), !is.na(shooter)) %>%
+              separate(shooter, c("shooter", "shooter.name"), ". ", extra = "merge", fill = "right") %>%
+              separate(assist1, c("assist1", "assist1.name"), ". ", extra = "merge", fill = "right") %>%
+              separate(assist2, c("assist2", "assist2.name"), ". ", extra = "merge", fill = "right") %>%
+              separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
+              select(id, match, team, shooter, assist1, assist2, goalie, period, time, EV, PP, SH, EN) %T>%
+              print() %>%
+              pool::dbAppendTable(conn, "point", value = .)
+          )
+        }
+
+        if (n < 1) {
+          pool::dbBreak()
+        }
+
+        print("shot")
+        df.shot <- hot_to_r(input$record_shot)
+        if (!is.null(df.shot)) {
+          df.shot %>%
+            mutate(
+              id = NA,
+              match = match_id$id,
+              team = team_to_id[team],
+              goalie = na_if(goalie, "")
+            ) %>%
+            filter(!is.na(team)) %>%
+            separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
+            select(id, match, team, goalie, SH, period) %T>%
+            print() %>%
+            pool::dbAppendTable(conn, "shot", value = .) %>%
+            print()
+        }
+
+        print("penalty")
+        df.penalty <- hot_to_r(input$record_penalty)
+        if (!is.null(df.penalty)) {
+          filter(df.penalty, team != "") %>%
+            mutate(
+              across(all_of(c("player", "server", "goalie")), \(ele) na_if(ele, "")),
+              id = NA,
+              match = match_id$id,
+              team = team_to_id[team],
+              scored = as.integer(scored)
+            ) %>%
+            filter(!is.na(team), !is.na(duration)) %>%
+            separate(player, c("player", "player.name"), ". ", extra = "merge", fill = "right") %>%
+            separate(server, c("server", "server.name"), ". ", extra = "merge", fill = "right") %>%
+            separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
+            separate(foul, c("foul", "foul.call"), ". ", extra = "merge") %>%
+            select(id, match, team, player, server, goalie, foul, duration, period, time, scored) %T>%
+            print() %>%
+            pool::dbAppendTable(conn, "penalty", value = .) %>%
+            print()
+        }
+
+        pool::dbBreak()
+      }),
+      error = function(e) print(e)
     )
-    
-    team_to_id <- setNames(1:2, c("home", "away"))
-    
-    df.shot <- hot_to_r(input$record_shot)
-    if (!is.null(df.shot)) {
-      df.shot %>%
-        mutate(
-          id = NA,
-          match = match_id$id,
-          team = team_to_id[team]
-        ) %>%
-        separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
-        select(id, match, team, goalie, SH, period) %>%
-        DBI::dbAppendTable(conn, "shot", value = .) %>%
-        print()
-    }
-    df.point <- hot_to_r(input$record_point)
-    if (!is.null(df.point)) {
-      df.point %>%
-        mutate(
-          id = NA,
-          match = match_id$id,
-          team = team_to_id[team],
-          across(all_of(c("EV", "PP", "SH", "EN")), \(ele) as.integer(ele))
-        ) %>%
-        separate(shooter, c("shooter", "shooter.name"), ". ", extra = "merge", fill = "right") %>%
-        separate(assist1, c("assist1", "assist1.name"), ". ", extra = "merge", fill = "right") %>%
-        separate(assist2, c("assist2", "assist2.name"), ". ", extra = "merge", fill = "right") %>%
-        separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
-        select(id, match, team, shooter, assist1, assist2, goalie, period, time, EV, PP, SH, EN) %>%
-        DBI::dbAppendTable(conn, "point", value = .) %>%
-        print()
-    }
-    df.penalty <- hot_to_r(input$record_penalty)
-    if (!is.null(df.penalty)) {
-      filter(df.penalty, team != "") %>%
-        mutate(
-          id = NA,
-          match = match_id$id,
-          team = team_to_id[team],
-          scored = as.integer(scored)
-        ) %>%
-        separate(player, c("player", "player.name"), ". ", extra = "merge", fill = "right") %>%
-        separate(server, c("server", "server.name"), ". ", extra = "merge", fill = "right") %>%
-        separate(goalie, c("goalie", "goalie.name"), ". ", extra = "merge", fill = "right") %>%
-        separate(foul, c("foul", "foul.call"), ". ", extra = "merge") %>%
-        select(id, match, team, player, server, goalie, foul, duration, period, time, scored) %>%
-        DBI::dbAppendTable(conn, "penalty", value = .) %>%
-        print()
-    }
-    
-    DBI::dbDisconnect(conn)
   })
-  
+
   # team
 
   output$team <- renderRHandsontable({
@@ -469,8 +496,11 @@ server <- function(input, output, session) {
         as.list()
     )
     tbl(pool, "team") %>%
-      arrange(desc(year), desc(season), desc(session)) %>%
+      left_join(tbl(pool, "season"), by = join_by(season == id)) %>%
       as_tibble() %>%
+      select(-season) %>%
+      rename(season = season.y) %>%
+      arrange(desc(year), desc(season), desc(session)) %>%
       mutate(season = factor(names(seasons)[season - min(seasons) + 1], levels = names(seasons))) %>%
       rhandsontable(
         rowHeaders = NULL,
@@ -540,7 +570,7 @@ server <- function(input, output, session) {
 
   ## update based on input table changes
 
-  lapply(c("upload_roster", "upload_team"), function(ele) 
+  lapply(c("upload_roster", "upload_team"), function(ele) {
     observeEvent(input[[ele]]$changes$changes, {
       coor <- input[[ele]]$changes$changes[[1]]
       req(coor[[3]] != coor[[4]])
@@ -548,20 +578,20 @@ server <- function(input, output, session) {
       data_roster <- hot_to_r(input$upload_roster)
       color_color <- as.list(with(data_team, setNames(color, color)))
       df.player <- as_tibble(tbl(pool, "player"))
-      
+
       # note: team and roster share the same first two columns: [1] color & [2] team
       idx <- coor[[2]] + 1 # change from 0 to 1-based index
       key <- names(data_roster)[coor[[2]] + 1]
       if (ele == "upload_team" & (key == "color" | key == "team")) {
         idx <- coor[[2]] + 1
-        data_roster[idx][data_roster[idx] == coor[[3]] ] <- coor[[4]]
+        data_roster[idx][data_roster[idx] == coor[[3]]] <- coor[[4]]
       } else if (ele == "upload_roster" & key == "player") {
         result <- pool::dbGetQuery(pool, "SELECT id FROM player WHERE name == ?;", params = coor[[4]])
         data_roster[coor[[1]] + 1, "id"] <- ifelse(nrow(result) > 0, result$id, NA_integer_)
       }
-      
+
       data_roster$color <- with(data_team, setNames(color, team))[data_roster$team]
-      
+
       output$upload_team <- renderRHandsontable({
         rhandsontable(
           data_team,
@@ -582,7 +612,7 @@ server <- function(input, output, session) {
           hot_col("player", type = "dropdown", source = unique(df.player$name), strict = F, allowInvalid = T)
       })
     })
-  )
+  })
 
   ## submit roster
 
@@ -592,6 +622,9 @@ server <- function(input, output, session) {
 
     tryCatch(
       pool::poolWithTransaction(pool, function(conn) {
+        
+        # TODO: insert into season then add season id to the other tables
+        
         df.team <- (
           data_team %>%
             rename(name = team) %>%
@@ -599,7 +632,7 @@ server <- function(input, output, session) {
             mutate(id, year = input$input_year, season = input$input_season, session = input$input_session)
         )
         df.team <- bind_cols(
-          DBI::dbGetQuery(
+          pool::dbGetQuery(
             conn = conn,
             glue::glue_sql("INSERT INTO team VALUES (:id, :year, :season, :session, :name, :color) RETURNING id;", .con = conn),
             params = df.team
@@ -615,7 +648,7 @@ server <- function(input, output, session) {
             select(id, name)
         )
         df.player <- bind_cols(
-          DBI::dbGetQuery(
+          pool::dbGetQuery(
             conn = conn,
             glue::glue_sql("INSERT INTO player VALUES (:id, :name) RETURNING id;", .con = conn),
             params = df.player
@@ -638,7 +671,7 @@ server <- function(input, output, session) {
             mutate(id = NA)
         )
         df.roster <- bind_cols(
-          DBI::dbGetQuery(
+          pool::dbGetQuery(
             conn = conn,
             glue::glue_sql("INSERT INTO roster VALUES (:id, :team, :player, :captain) RETURNING id;", .con = conn),
             params = df.roster
@@ -653,11 +686,11 @@ server <- function(input, output, session) {
   })
 
   # CRUD
-  
+
   values <- reactiveValues(
     changed = sapply(c("team", "player", "roster"), \(ele) NULL)
   )
-  
+
   lapply(
     c("team", "player", "roster"),
     function(ele) {
@@ -666,68 +699,67 @@ server <- function(input, output, session) {
         coor <- input[[ele]]$changes$changes[[1]]
         req(coor[[3]] != coor[[4]])
         key <- names(df.hot)[coor[[2]] + 1]
-        values$changed[[ele]] <- c(values$changed[[ele]], df.hot$id[coor[[1]]+1])
+        values$changed[[ele]] <- c(values$changed[[ele]], df.hot$id[coor[[1]] + 1])
       })
     }
   )
-# 
-#   observeEvent(input$save, {
-#     lapply(
-#       c("team", "player", "roster"),
-#       function(ele) {
-#         # print(values$changed)
-#         df.hot <- hot_to_r(input[[ele]])
-#         deleted <- if (is.null(df.hot)) c() else setdiff(match()[[ele]]$id, df.hot$id)
-#         changed <- setdiff(values$changed[[ele]], deleted)
-#   
-#         print(c("deleted", ele, deleted))
-#         print(c("changed", ele, changed))
-#         
-#         # DELETE
-#         if (length(deleted) > 0) {
-#           n <- (
-#             DBI::dbExecute(conn, glue::glue_sql("DELETE FROM {`ele`} WHERE id IN (", str_c(deleted, collapse = ", "), ");", .con = conn))
-#           )
-#           print(c(n, "deleted"))
-#         }
-#   
-#         # CREATE
-#         # new rows have missing id, so insert them and assign a new one
-#         idx <- which(is.na(df.hot$id))
-#         if (length(idx) > 0) {
-#           df.hot[idx, ]$id <- DBI::dbGetQuery(
-#             conn = conn,
-#             glue::glue_sql("INSERT INTO {`ele`} VALUES (", str_c(rep("?", ncol(df.hot)), collapse = ", "), ") RETURNING id;", .con = conn),
-#             params = unname(as.list(df.hot[idx, ]))
-#           )
-#         }
-#         idx <- c(idx, which(df.hot$id %in% changed))
-#   
-#         # UPDATE
-#         # changed rows have an id to coordinate the update
-#         if (length(idx) > 0) {
-#           df.hot[idx, ] %>%
-#             mutate(across(everything(), \(ele) as.character(ele))) %>%
-#             pivot_longer(-id, values_drop_na = T) %>%
-#             # get the latest updated value
-#             group_by(id, name) %>%
-#             slice_tail(n = 1) %>%
-#             ungroup() %>%
-#             # generate/run SQL
-#             with(glue::glue_sql("UPDATE {`ele`} SET {`name`} = {value} WHERE id == {id};", .con = conn)) %>%
-#             lapply(function(ele) {
-#               res <- DBI::dbSendStatement(conn, statement = ele)
-#               status <- c(ele, DBI::dbHasCompleted(res), DBI::dbGetRowsAffected(res))
-#               DBI::dbClearResult(res)
-#               setNames(status, c("sql", "success", "n"))
-#             }) %>%
-#             bind_rows() %>%
-#             print()
-#         }
-#   
-#         values$changed[[ele]] <- values$changed[[ele]][0]
-#       }
-#     )
-#   })
 
+  #   observeEvent(input$save, {
+  #     lapply(
+  #       c("team", "player", "roster"),
+  #       function(ele) {
+  #         # print(values$changed)
+  #         df.hot <- hot_to_r(input[[ele]])
+  #         deleted <- if (is.null(df.hot)) c() else setdiff(match()[[ele]]$id, df.hot$id)
+  #         changed <- setdiff(values$changed[[ele]], deleted)
+  #
+  #         print(c("deleted", ele, deleted))
+  #         print(c("changed", ele, changed))
+  #
+  #         # DELETE
+  #         if (length(deleted) > 0) {
+  #           n <- (
+  #             DBI::dbExecute(conn, glue::glue_sql("DELETE FROM {`ele`} WHERE id IN (", str_c(deleted, collapse = ", "), ");", .con = conn))
+  #           )
+  #           print(c(n, "deleted"))
+  #         }
+  #
+  #         # CREATE
+  #         # new rows have missing id, so insert them and assign a new one
+  #         idx <- which(is.na(df.hot$id))
+  #         if (length(idx) > 0) {
+  #           df.hot[idx, ]$id <- DBI::dbGetQuery(
+  #             conn = conn,
+  #             glue::glue_sql("INSERT INTO {`ele`} VALUES (", str_c(rep("?", ncol(df.hot)), collapse = ", "), ") RETURNING id;", .con = conn),
+  #             params = unname(as.list(df.hot[idx, ]))
+  #           )
+  #         }
+  #         idx <- c(idx, which(df.hot$id %in% changed))
+  #
+  #         # UPDATE
+  #         # changed rows have an id to coordinate the update
+  #         if (length(idx) > 0) {
+  #           df.hot[idx, ] %>%
+  #             mutate(across(everything(), \(ele) as.character(ele))) %>%
+  #             pivot_longer(-id, values_drop_na = T) %>%
+  #             # get the latest updated value
+  #             group_by(id, name) %>%
+  #             slice_tail(n = 1) %>%
+  #             ungroup() %>%
+  #             # generate/run SQL
+  #             with(glue::glue_sql("UPDATE {`ele`} SET {`name`} = {value} WHERE id == {id};", .con = conn)) %>%
+  #             lapply(function(ele) {
+  #               res <- DBI::dbSendStatement(conn, statement = ele)
+  #               status <- c(ele, DBI::dbHasCompleted(res), DBI::dbGetRowsAffected(res))
+  #               DBI::dbClearResult(res)
+  #               setNames(status, c("sql", "success", "n"))
+  #             }) %>%
+  #             bind_rows() %>%
+  #             print()
+  #         }
+  #
+  #         values$changed[[ele]] <- values$changed[[ele]][0]
+  #       }
+  #     )
+  #   })
 }
