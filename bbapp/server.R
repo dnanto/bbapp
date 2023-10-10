@@ -40,15 +40,10 @@ server <- function(input, output, session) {
       </span>
     ")
     params <- tail(unlist(strsplit(input$set_yss, "_")), -1)
-    season_id <- (
-      tbl(pool, "season") %>%
-        filter(year == !!params[1], season == !!params[2], session == !!params[3]) %>%
-        pull(season)
-    )
     data <- (
-      tbl(pool, "match") %>%
-        filter(season == !!season_id) %>%
-        select(week, game) %>%
+      tbl(pool, "v_matchup") %>%
+        filter(year == !!params[1], season == !!params[2], session == !!params[3]) %>%
+        distinct(week, game) %>%
         arrange(desc(week)) %>%
         as_tibble() %>%
         mutate(
@@ -293,6 +288,7 @@ server <- function(input, output, session) {
     data <- roster()
     team_color <- as.list(with(distinct(data, team, color), setNames(color, team)))
     select(data, id, team, player, captain) %>%
+      arrange(team) %>%
       mutate(captain = as.logical(captain)) %>%
       rhandsontable(
         stretchH = "all",
@@ -398,14 +394,17 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$submit_record, {
+    req(input$set_yss)
     tryCatch(
       pool::poolWithTransaction(pool, function(conn) {
-        print(c(NA, input$home, input$away, input$date, input$time, input$week, input$game, input$rink, NA))
+        params <- tail(unlist(strsplit(input$set_yss, "_")), -1)
+        season_id <- insert_or_get_season_id(conn, params[1], params[2], params[3])
+        
         match_id <- (
           pool::dbGetQuery(
             conn = conn,
-            "INSERT INTO match VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;",
-            params = c(NA, input$home, input$away, input$date, input$time, input$week, input$game, input$rink, NA)
+            "INSERT INTO match VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;",
+            params = c(NA, season_id, input$home, input$away, input$rink, input$week, input$game, input$date, input$time, input$record_meta)
           )
         )
         print(match_id)
@@ -615,7 +614,7 @@ server <- function(input, output, session) {
   })
 
   ## submit roster
-
+  
   observeEvent(input$submit_roster, {
     data_team <- hot_to_r(input$upload_team)
     data_roster <- hot_to_r(input$upload_roster)
@@ -623,18 +622,17 @@ server <- function(input, output, session) {
     tryCatch(
       pool::poolWithTransaction(pool, function(conn) {
         
-        # TODO: insert into season then add season id to the other tables
+        season_id <- insert_or_get_season_id(conn, input$input_year, input$input_season, input$input_session)
         
         df.team <- (
           data_team %>%
             rename(name = team) %>%
-            mutate(id = NA) %>%
-            mutate(id, year = input$input_year, season = input$input_season, session = input$input_session)
+            mutate(id = NA, season = season_id)
         )
         df.team <- bind_cols(
           pool::dbGetQuery(
             conn = conn,
-            glue::glue_sql("INSERT INTO team VALUES (:id, :year, :season, :session, :name, :color) RETURNING id;", .con = conn),
+            glue::glue_sql("INSERT INTO team VALUES (:id, :season, :name, :color) RETURNING id;", .con = conn),
             params = df.team
           ),
           select(df.team, -id)

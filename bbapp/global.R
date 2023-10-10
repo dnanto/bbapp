@@ -85,4 +85,23 @@ validator.time.match <- (
   "
 )
 
+insert_or_get_season_id <- function(conn, year, season, session) {
+  season_id <- (
+    tbl(conn, "season") %>%
+      filter(year == !!year, season == !!season, session == !!session) %>%
+      pull(id)
+  )
+  if (identical(season_id, integer(0))) {
+    season_id <- (
+      pool::dbGetQuery(
+        conn = conn,
+        glue::glue_sql("INSERT INTO season VALUES (:id, :year, :season, :session) RETURNING id;", .con = conn),
+        params = list(id = NA, year = year, season = season, session = session)
+      ) %>%
+        pull(id)
+    )
+  }
+  season_id
+}
+
 onStop(\() pool::poolClose(pool))

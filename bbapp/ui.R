@@ -73,6 +73,7 @@ ui <- (
                   numericInput("week", "week", value = 1, min = 1),
                   numericInput("game", "game", value = 1, min = 1),
                   selectInput("rink", "rink", choices = rinks, last(rinks)),
+                  textAreaInput("record_meta", "meta"),
                   tags$hr(),
                   actionButton("submit_record", "Submit", width = "100%"),
                   width = 4
